@@ -1,0 +1,10 @@
+name = "email-notify"
+account_id = "2283759f519840be93da1379fb8b435d"
+main = "gmail-worker.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# No routes needed --- we call it directly at
+# https://email-notify.<your-subdomain>.workers.dev
+
+# Secrets are set via: wrangler secret put <NAME> --config email-wrangler.toml

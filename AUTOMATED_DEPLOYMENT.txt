@@ -1,0 +1,176 @@
+═══════════════════════════════════════════════════════════════════════════════
+  AUTOMATED DEPLOYMENT SCRIPTS
+═══════════════════════════════════════════════════════════════════════════════
+
+Two automated deployment scripts have been created. Choose based on your OS:
+
+───────────────────────────────────────────────────────────────────────────────
+WINDOWS USERS
+───────────────────────────────────────────────────────────────────────────────
+
+RUN THIS:
+  run-migration.bat
+
+This script:
+  ✓ Commits and pushes code to GitHub
+  ✓ Waits for Vercel to build
+  ✓ Runs the Supabase migration script
+  ✓ Guides you through Cloudflare environment variable setup (opens links)
+  ✓ Deploys to Cloudflare Pages
+  ✓ Guides you through creating admin auth users (opens links)
+  ✓ Runs smoke tests on both Vercel and Cloudflare endpoints
+
+STEPS:
+  1. Open Command Prompt (cmd.exe)
+  2. Navigate to the project: cd "C:\Users\USER\Documents\Claude\Projects\Financial 101 tOy\financial-planner"
+  3. Run: run-migration.bat
+  4. Follow the prompts (some are automated, some require opening dashboard links)
+
+REQUIREMENTS:
+  - Git installed and configured
+  - Node.js installed (for migration script)
+  - curl available (usually included with git)
+  - Web browser (for Cloudflare and Supabase dashboards)
+
+───────────────────────────────────────────────────────────────────────────────
+MAC/LINUX/WSL USERS
+───────────────────────────────────────────────────────────────────────────────
+
+RUN THIS:
+  bash run-migration.sh
+
+This script:
+  ✓ Commits and pushes code to GitHub
+  ✓ Waits for Vercel to build
+  ✓ Runs the Supabase migration script
+  ✓ Guides you through Cloudflare environment variable setup
+  ✓ Deploys to Cloudflare Pages
+  ✓ Guides you through creating admin auth users
+  ✓ Runs smoke tests on both Vercel and Cloudflare endpoints
+
+STEPS:
+  1. Open Terminal
+  2. Navigate to the project
+  3. Run: bash run-migration.sh
+  4. Follow the prompts
+
+REQUIREMENTS:
+  - Bash shell
+  - Git installed and configured
+  - Node.js installed (for migration script)
+  - curl available
+
+───────────────────────────────────────────────────────────────────────────────
+WHAT THESE SCRIPTS AUTOMATE
+───────────────────────────────────────────────────────────────────────────────
+
+FULLY AUTOMATED:
+  ✓ Step 1: Git commit and push
+  ✓ Step 2: Run migration script (KV → Supabase)
+  ✓ Step 4: Deploy to Cloudflare
+  ✓ Step 6: Run smoke tests
+
+GUIDED MANUAL STEPS (Dashboard access required):
+  ⚠ Step 3: Cloudflare environment variables
+     - Script will display exact variables and values
+     - You copy/paste into Cloudflare Dashboard
+     - Script waits for you to confirm
+
+  ⚠ Step 5: Create admin auth users
+     - Script will display Supabase dashboard link
+     - You create two users with exact credentials
+     - Script waits for you to confirm
+
+───────────────────────────────────────────────────────────────────────────────
+WHAT YOU NEED TO HAVE READY
+───────────────────────────────────────────────────────────────────────────────
+
+1. GitHub credentials configured (git push should work)
+   Test: git push origin main
+
+2. Git remote for Cloudflare configured (if deploying to Cloudflare)
+   If not configured, the script will display: git remote add cloudflare [url]
+   OR you can deploy manually after script completes
+
+3. Browser access to:
+   - Cloudflare Dashboard: https://dash.cloudflare.com/
+   - Supabase Dashboard: https://supabase.com/dashboard/
+
+4. These credentials ready to copy (already in script, but useful to know):
+   - SUPABASE_URL: https://qmuvdpnnpptfrinhnzlv.supabase.co
+   - ANON_KEY: eyJhbGci...EYIY (long JWT)
+   - SERVICE_ROLE_KEY: sb_secret_...Yot
+   - ALLOWED_EMAILS: toy.theeranan@icloud.com,toy.theeranan@gmail.com
+   - Auth user password: @Supa2026
+
+───────────────────────────────────────────────────────────────────────────────
+EXPECTED TIMELINE
+───────────────────────────────────────────────────────────────────────────────
+
+Total time: ~30-40 minutes (mostly waiting for builds)
+
+  Step 1: Git push & Vercel build      ~10-15 min
+  Step 2: Migration script              ~10 min
+  Step 3: Cloudflare env vars (manual)   ~3 min
+  Step 4: Cloudflare deploy             ~2-5 min
+  Step 5: Create auth users (manual)     ~3 min
+  Step 6: Smoke tests                    ~2 min
+
+The script includes automatic polling and waiting, so you can just follow
+the prompts. Manual steps only require copying values into dashboards.
+
+───────────────────────────────────────────────────────────────────────────────
+TROUBLESHOOTING
+───────────────────────────────────────────────────────────────────────────────
+
+If script fails to run:
+
+WINDOWS (run-migration.bat):
+  Problem: "curl is not recognized"
+  Solution: Install git for Windows (includes curl) or use WSL
+
+  Problem: Git push fails
+  Solution: Check GitHub credentials: git config --list
+  Solution: Try: git push -u origin main
+
+MAC/LINUX (run-migration.sh):
+  Problem: "Permission denied"
+  Solution: chmod +x run-migration.sh
+
+  Problem: Node not found
+  Solution: Install Node.js: brew install node (macOS) or apt install nodejs (Linux)
+
+If deployment fails:
+
+  Check Vercel:  https://vercel.com/tccollectibles/financial-planner/deployments
+  Check CF:      https://dash.cloudflare.com/
+  Check Supabase: https://supabase.com/dashboard/
+
+  Smoke test endpoints manually:
+  - Vercel:     curl https://financial101vercel.app/api/admin/users
+  - Cloudflare: curl https://financeplan-th.pages.dev/api/admin/users
+
+───────────────────────────────────────────────────────────────────────────────
+AFTER DEPLOYMENT
+───────────────────────────────────────────────────────────────────────────────
+
+Once the scripts complete:
+
+1. Monitor both dashboards for 24 hours for errors
+2. Test admin login with both users (@Supa2026 password)
+3. Verify data integrity in Supabase
+4. Once stable, archive old Cloudflare KV and Vercel filesystem data
+5. Update team documentation
+
+───────────────────────────────────────────────────────────────────────────────
+OTHER DOCUMENTATION
+───────────────────────────────────────────────────────────────────────────────
+
+- MIGRATION_STATUS.md    - Detailed status report
+- QUICK_START.txt        - Manual step-by-step commands
+- DEPLOY_TRACK_B.sh      - Interactive script with more detailed prompts
+- README (original)      - Project documentation
+
+═══════════════════════════════════════════════════════════════════════════════
+READY TO DEPLOY? PICK YOUR SCRIPT AND RUN IT NOW!
+═══════════════════════════════════════════════════════════════════════════════

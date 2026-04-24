@@ -1,0 +1,301 @@
+"use client";
+import { useState } from "react";
+import { useStore, selectTotalMonthlyExpenses } from "@/lib/store";
+import { thb, toMonthly, pct } from "@/lib/utils";
+import type { ExpenseItem, Frequency } from "@/lib/types";
+import {
+  Card, CardHeader, CardTitle, CardContent, Button, Input, Label,
+  Select, Switch, Textarea, Modal, Badge, StatCard, PageHeader, EmptyState, Progress
+} from "@/components/ui";
+import { Plus, Edit, Trash2, ShoppingCart, Filter } from "lucide-react";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+
+const EXPENSE_CATEGORIES = ["Utilities","Food","Transport","Insurance","Housing","Entertainment","Shopping","Travel","Family","Pet","Health","Investment","Medical","Other"];
+const FREQUENCIES: Frequency[] = ["monthly", "yearly", "one-time"];
+const COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#84cc16","#ec4899","#14b8a6"];
+
+function defaultExpense(): Omit<ExpenseItem, "id"> {
+  return {
+    name: "", category: "Housing", amount: 0, frequency: "monthly",
+    owner: "Me", startDate: new Date().toISOString().split("T")[0],
+    inflationRate: 0.03, isEssential: true, notes: "", isActive: true,
+  };
+}
+
+function ExpenseForm({ item, onChange }: { item: Omit<ExpenseItem, "id">; onChange: (k: string, v: any) => void }) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <div className="col-span-2">
+        <Label>Name</Label>
+        <Input value={item.name} onChange={e => onChange("name", e.target.value)} className="mt-1" placeholder="e.g. Monthly Rent" />
+      </div>
+      <div>
+        <Label>Category</Label>
+        <Select value={item.category} onChange={e => onChange("category", e.target.value)} className="mt-1">
+          {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+        </Select>
+      </div>
+      <div>
+        <Label>Owner</Label>
+        <Input value={item.owner} onChange={e => onChange("owner", e.target.value)} className="mt-1" />
+      </div>
+      <div>
+        <Label>Amount (฿)</Label>
+        <Input type="number" value={item.amount} onChange={e => onChange("amount", Number(e.target.value))} className="mt-1" />
+      </div>
+      <div>
+        <Label>Frequency</Label>
+        <Select value={item.frequency} onChange={e => onChange("frequency", e.target.value)} className="mt-1">
+          {FREQUENCIES.map(f => <option key={f} value={f}>{f.charAt(0).toUpperCase() + f.slice(1)}</option>)}
+        </Select>
+      </div>
+      <div>
+        <Label>Start Date</Label>
+        <Input type="date" value={item.startDate} onChange={e => onChange("startDate", e.target.value)} className="mt-1" />
+      </div>
+      <div>
+        <Label>End Date (optional)</Label>
+        <Input type="date" value={item.endDate ?? ""} onChange={e => onChange("endDate", e.target.value || undefined)} className="mt-1" />
+      </div>
+      <div>
+        <Label>Inflation Rate</Label>
+        <div className="relative mt-1">
+          <Input type="number" step="0.1" min={0} max={50}
+            value={(item.inflationRate * 100).toFixed(1)}
+            onChange={e => onChange("inflationRate", Number(e.target.value) / 100)} />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+        </div>
+      </div>
+      <div>
+        <Label>Budget Amount (฿) – optional</Label>
+        <Input type="number" value={item.budgetAmount ?? ""} onChange={e => onChange("budgetAmount", e.target.value ? Number(e.target.value) : undefined)} className="mt-1" />
+      </div>
+      <div className="flex items-center gap-3 mt-2">
+        <Label>Essential</Label>
+        <Switch checked={item.isEssential} onCheckedChange={v => onChange("isEssential", v)} />
+        <span className="text-sm text-muted-foreground">{item.isEssential ? "Essential" : "Discretionary"}</span>
+      </div>
+      <div className="flex items-center gap-3 mt-2">
+        <Label>Active</Label>
+        <Switch checked={item.isActive} onCheckedChange={v => onChange("isActive", v)} />
+      </div>
+      <div className="col-span-2">
+        <Label>Notes</Label>
+        <Textarea value={item.notes} onChange={e => onChange("notes", e.target.value)} className="mt-1" />
+      </div>
+    </div>
+  );
+}
+
+export default function ExpensesPage() {
+  const { expenses, addExpense, updateExpense, deleteExpense } = useStore();
+  const store = useStore();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [formData, setFormData] = useState<Omit<ExpenseItem, "id">>(defaultExpense());
+  const [filterCat, setFilterCat] = useState("all");
+  const [filterEssential, setFilterEssential] = useState<"all" | "essential" | "discretionary">("all");
+
+  const totalMonthly = selectTotalMonthlyExpenses(store);
+  const essentialMonthly = expenses.filter(e => e.isActive && e.isEssential)
+    .reduce((s, e) => s + toMonthly(e.amount, e.frequency), 0);
+  const discretionaryMonthly = totalMonthly - essentialMonthly;
+
+  const openAdd = () => { setFormData(defaultExpense()); setEditId(null); setModalOpen(true); };
+  const openEdit = (item: ExpenseItem) => { setFormData({ ...item }); setEditId(item.id); setModalOpen(true); };
+  const handleSave = () => {
+    if (!formData.name || formData.amount <= 0) return;
+    if (editId) updateExpense(editId, formData);
+    else addExpense(formData);
+    setModalOpen(false);
+  };
+  const handleDelete = (id: string) => { if (confirm("Delete this expense?")) deleteExpense(id); };
+  const setField = (k: string, v: any) => setFormData(f => ({ ...f, [k]: v }));
+
+  // Category breakdown for chart
+  const catBreakdown = (() => {
+    const cats: Record<string, number> = {};
+    for (const e of expenses.filter(e => e.isActive)) {
+      cats[e.category] = (cats[e.category] ?? 0) + toMonthly(e.amount, e.frequency);
+    }
+    return Object.entries(cats).map(([name, value]) => ({ name, value: Math.round(value) }))
+      .sort((a, b) => b.value - a.value);
+  })();
+
+  const filtered = expenses
+    .filter(e => filterCat === "all" || e.category === filterCat)
+    .filter(e => filterEssential === "all" || (filterEssential === "essential" ? e.isEssential : !e.isEssential))
+    .sort((a, b) => toMonthly(b.amount, b.frequency) - toMonthly(a.amount, a.frequency));
+
+  return (
+    <div className="p-6 max-w-5xl mx-auto">
+      <PageHeader
+        title="Expenses"
+        subtitle="Track monthly, yearly, and one-time expenses with inflation"
+        actions={<Button size="sm" onClick={openAdd}><Plus size={14} /> Add Expense</Button>}
+      />
+
+      {/* Summary */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <StatCard title="Total Monthly" value={thb(totalMonthly)} icon={ShoppingCart} color="red" />
+        <StatCard title="Annual Run Rate" value={thb(totalMonthly * 12)} icon={ShoppingCart} color="amber" />
+        <StatCard title="Essential" value={thb(essentialMonthly)} subtitle={pct(essentialMonthly / (totalMonthly || 1))} icon={ShoppingCart} color="blue" />
+        <StatCard title="Discretionary" value={thb(discretionaryMonthly)} subtitle={pct(discretionaryMonthly / (totalMonthly || 1))} icon={ShoppingCart} color="purple" />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        {/* Category chart */}
+        <Card className="lg:col-span-1">
+          <CardHeader><CardTitle className="text-sm">By Category</CardTitle></CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={180}>
+              <PieChart>
+                <Pie data={catBreakdown.slice(0, 8)} cx="50%" cy="50%" outerRadius={70} dataKey="value"
+                  label={({ percent }) => `${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={10}>
+                  {catBreakdown.slice(0, 8).map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                </Pie>
+                <Tooltip formatter={(v: number) => thb(v)} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="space-y-1 mt-2">
+              {catBreakdown.slice(0, 5).map((c, i) => (
+                <div key={c.name} className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full" style={{ background: COLORS[i] }} />
+                    <span className="text-muted-foreground">{c.name}</span>
+                  </div>
+                  <span className="font-medium tabular-nums">{thb(c.value)}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Essential vs Discretionary */}
+        <Card className="lg:col-span-2">
+          <CardHeader><CardTitle className="text-sm">Essential vs Discretionary Breakdown</CardTitle></CardHeader>
+          <CardContent>
+            <div className="mb-4">
+              <div className="flex justify-between text-sm mb-1">
+                <span>Essential ({pct(essentialMonthly / (totalMonthly || 1))})</span>
+                <span className="font-medium tabular-nums">{thb(essentialMonthly)}/mo</span>
+              </div>
+              <Progress value={(essentialMonthly / (totalMonthly || 1)) * 100} color="bg-blue-500" />
+            </div>
+            <div className="mb-4">
+              <div className="flex justify-between text-sm mb-1">
+                <span>Discretionary ({pct(discretionaryMonthly / (totalMonthly || 1))})</span>
+                <span className="font-medium tabular-nums">{thb(discretionaryMonthly)}/mo</span>
+              </div>
+              <Progress value={(discretionaryMonthly / (totalMonthly || 1)) * 100} color="bg-purple-500" />
+            </div>
+            <div className="grid grid-cols-2 gap-2 mt-4">
+              {catBreakdown.map((c, i) => (
+                <div key={c.name} className="flex items-center justify-between p-2 rounded-lg bg-muted/50 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
+                    <span className="truncate text-muted-foreground">{c.name}</span>
+                  </div>
+                  <span className="font-medium tabular-nums ml-2">{thb(c.value)}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-2 mb-4 flex-wrap items-center">
+        <Filter size={14} className="text-muted-foreground" />
+        <Select value={filterCat} onChange={e => setFilterCat(e.target.value)} className="w-40 h-8 text-xs">
+          <option value="all">All Categories</option>
+          {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+        </Select>
+        {(["all", "essential", "discretionary"] as const).map(f => (
+          <button key={f}
+            onClick={() => setFilterEssential(f)}
+            className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${
+              filterEssential === f ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"
+            }`}
+          >
+            {f.charAt(0).toUpperCase() + f.slice(1)}
+          </button>
+        ))}
+        <span className="ml-auto text-xs text-muted-foreground">{filtered.length} items</span>
+      </div>
+
+      {/* Expense table */}
+      {filtered.length === 0 ? (
+        <EmptyState icon={ShoppingCart} title="No expenses" description="Add expense items to track your spending." action={<Button onClick={openAdd}><Plus size={14} /> Add Expense</Button>} />
+      ) : (
+        <Card>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/50">
+                  {["Name", "Category", "Amount", "Monthly", "Inflation", "Essential", "Status", ""].map(h => (
+                    <th key={h} className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(item => {
+                  const monthly = toMonthly(item.amount, item.frequency);
+                  const overBudget = item.budgetAmount && item.amount > item.budgetAmount;
+                  return (
+                    <tr key={item.id} className="border-b border-border hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{item.name}</div>
+                        <div className="text-xs text-muted-foreground">{item.owner} · {item.frequency}</div>
+                      </td>
+                      <td className="px-4 py-3"><Badge variant="outline">{item.category}</Badge></td>
+                      <td className="px-4 py-3">
+                        <div className="tabular-nums font-medium">{thb(item.amount)}</div>
+                        {overBudget && <div className="text-xs text-red-500">↑ over budget</div>}
+                      </td>
+                      <td className="px-4 py-3 tabular-nums">{thb(monthly)}</td>
+                      <td className="px-4 py-3 tabular-nums text-muted-foreground">{pct(item.inflationRate)}/yr</td>
+                      <td className="px-4 py-3">
+                        <Badge variant={item.isEssential ? "default" : "outline"}>
+                          {item.isEssential ? "Essential" : "Discretionary"}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant={item.isActive ? "success" : "outline"}>{item.isActive ? "Active" : "Off"}</Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => openEdit(item)} className="p-1.5 hover:bg-accent rounded-md">
+                            <Edit size={14} className="text-muted-foreground" />
+                          </button>
+                          <button onClick={() => handleDelete(item.id)} className="p-1.5 hover:bg-destructive/10 rounded-md">
+                            <Trash2 size={14} className="text-destructive" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="bg-muted/30">
+                  <td colSpan={3} className="px-4 py-3 font-semibold">TOTAL</td>
+                  <td className="px-4 py-3 font-bold tabular-nums">{thb(totalMonthly)}/mo</td>
+                  <td colSpan={4} className="px-4 py-3 text-xs text-muted-foreground">{thb(totalMonthly * 12)}/year</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editId ? "Edit Expense" : "Add Expense"} className="max-w-2xl">
+        <ExpenseForm item={formData} onChange={setField} />
+        <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-border">
+          <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
+          <Button onClick={handleSave} disabled={!formData.name || formData.amount <= 0}>Save</Button>
+        </div>
+      </Modal>
+    </div>
+  );
+}

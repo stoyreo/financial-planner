@@ -1,0 +1,118 @@
+═══════════════════════════════════════════════════════════════════════════════
+  TRACK B SUPABASE MIGRATION - QUICK START GUIDE
+═══════════════════════════════════════════════════════════════════════════════
+
+All code is ready. Follow these 6 steps to complete deployment:
+
+───────────────────────────────────────────────────────────────────────────────
+STEP 1: DEPLOY TO VERCEL (5 min)
+───────────────────────────────────────────────────────────────────────────────
+
+cd "C:\Users\USER\Documents\Claude\Projects\Financial 101 tOy\financial-planner"
+git add .
+git commit -m "Track B: Unified Supabase backend"
+git push origin main
+
+→ Wait 2-3 minutes for Vercel to build
+→ Check: https://vercel.com/tccollectibles/financial-planner/deployments
+
+───────────────────────────────────────────────────────────────────────────────
+STEP 2: RUN MIGRATION SCRIPT (10 min)
+───────────────────────────────────────────────────────────────────────────────
+
+Run this command in the financial-planner directory:
+
+CF_BASE_URL=https://financeplan-th.pages.dev ^
+SUPABASE_URL=https://qmuvdpnnpptfrinhnzlv.supabase.co ^
+SUPABASE_SERVICE_ROLE_KEY=<REDACTED-see-.env.local> ^
+node scripts/migrate-kv-to-supabase.mjs
+
+Expected output:
+  [1/3] GET https://financeplan-th.pages.dev/api/admin/users
+  [2/3] upsert X rows into app_users
+  [3/3] migrating per-user data
+  Done. users=X data_moved=X data_missing=0
+
+───────────────────────────────────────────────────────────────────────────────
+STEP 3: CONFIGURE CLOUDFLARE ENVIRONMENT VARIABLES (3 min)
+───────────────────────────────────────────────────────────────────────────────
+
+Open: https://dash.cloudflare.com/
+→ Find "financial-planner" project
+→ Settings → Environment Variables
+→ Add for BOTH "Production" and "Preview":
+
+Variable: NEXT_PUBLIC_SUPABASE_URL
+Value: https://qmuvdpnnpptfrinhnzlv.supabase.co
+
+Variable: NEXT_PUBLIC_SUPABASE_ANON_KEY
+Value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtdXZkcG5ucHB0ZnJpbmhuemx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NzA0MDAsImV4cCI6MTg0MjkwNjQwMH0.4rR3EBKwKZNKDfXw2cWL7LJVDPHSxj0MnB7hP1qEYYY
+
+Variable: SUPABASE_SERVICE_ROLE_KEY
+Value: <REDACTED-see-.env.local>
+
+Variable: NEXT_PUBLIC_ALLOWED_EMAILS
+Value: toy.theeranan@icloud.com,toy.theeranan@gmail.com
+
+───────────────────────────────────────────────────────────────────────────────
+STEP 4: DEPLOY TO CLOUDFLARE (2 min)
+───────────────────────────────────────────────────────────────────────────────
+
+cd "C:\Users\USER\Documents\Claude\Projects\Financial 101 tOy\financial-planner"
+git push cloudflare main
+
+→ Wait 1-2 minutes for Cloudflare to deploy
+
+───────────────────────────────────────────────────────────────────────────────
+STEP 5: CREATE ADMIN AUTH USERS (3 min)
+───────────────────────────────────────────────────────────────────────────────
+
+Open: https://supabase.com/dashboard/project/qmuvdpnnpptfrinhnzlv/auth/users
+
+Click "Add user" and create two users:
+
+User 1:
+  Email: toy.theeranan@icloud.com
+  Password: @Supa2026
+
+User 2:
+  Email: toy.theeranan@gmail.com
+  Password: @Supa2026
+
+───────────────────────────────────────────────────────────────────────────────
+STEP 6: VERIFY DEPLOYMENT (5 min)
+───────────────────────────────────────────────────────────────────────────────
+
+Test Vercel endpoint:
+  curl -X GET "https://financial101vercel.app/api/admin/users" | jq
+
+Test Cloudflare endpoint:
+  curl -X GET "https://financeplan-th.pages.dev/api/admin/users" | jq
+
+Both should return the same user list from Supabase.
+
+═══════════════════════════════════════════════════════════════════════════════
+TOTAL TIME: ~30 minutes
+═══════════════════════════════════════════════════════════════════════════════
+
+All code files have been created in the project directory:
+  ✓ src/lib/supabase/admin.ts
+  ✓ src/app/api/admin/users/route.ts
+  ✓ src/app/api/sync/route.ts
+  ✓ functions/api/admin/users.ts
+  ✓ functions/api/sync.ts
+  ✓ scripts/migrate-kv-to-supabase.mjs
+  ✓ vercel.json (cleaned up)
+  ✓ .gitignore (updated)
+
+Environment variables set in Vercel:
+  ✓ SUPABASE_SERVICE_ROLE_KEY=sb_secret_...
+
+Notes:
+  - Git access limitation prevented automated push from Linux environment
+  - Manual git push (Step 1) is required to trigger Vercel build
+  - All other steps can be automated or triggered via dashboards
+  - For Windows, use ^  at end of lines for line continuation in PowerShell
+
+For detailed information, see: MIGRATION_STATUS.md
+For interactive deployment, run: bash DEPLOY_TRACK_B.sh
