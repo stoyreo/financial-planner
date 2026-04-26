@@ -119,9 +119,12 @@ export default function AdminUsersPage() {
     }
     setLocalSyncStatus("completed");
 
-    // 2) Remote registry (data/users-registry.json) — persists across restarts
+    // 2) Remote registry + Supabase Auth provisioning. We pass the plaintext
+    //    password so the server can call auth.admin.createUser() — without
+    //    this, signInWithPassword would reject the new user (auth.users row
+    //    would never have been created).
     setRemoteSyncStatus("saving");
-    const remote = await syncAddUserRemote(result.user);
+    const remote = await syncAddUserRemote(result.user, form.password);
     if (!remote.ok) {
       // Roll back the local add so the two stays in sync on failure
       removeUser(result.user.id);
@@ -172,13 +175,20 @@ export default function AdminUsersPage() {
       await changePassword(targetUser.id, newPassword);
       setLocalSyncStatus("completed");
 
-      // Push the new hash to the server registry so it survives a restart.
+      // Push the new hash to the server registry AND update the Supabase
+      // Auth password. The plaintext newPassword is what actually matters —
+      // signInWithPassword() validates against auth.users, not the
+      // app_users.password_hash column. If we skip the password parameter
+      // here, the user will keep getting "Invalid login credentials" with
+      // the new password.
       const updated = getUserById(targetUser.id);
       if (updated) {
         setRemoteSyncStatus("saving");
-        const remote = await syncUpdateUserRemote(targetUser.id, {
-          passwordHash: updated.passwordHash,
-        });
+        const remote = await syncUpdateUserRemote(
+          targetUser.id,
+          { passwordHash: updated.passwordHash },
+          newPassword,
+        );
         if (!remote.ok) {
           setRemoteSyncStatus("error", `Password sync failed: ${remote.error}`);
           flash("err", `Local password reset but remote sync failed: ${remote.error}`);

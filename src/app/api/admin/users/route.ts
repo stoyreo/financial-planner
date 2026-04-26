@@ -2,12 +2,86 @@
  * /api/admin/users — Supabase-backed user registry.
  * Replaces the previous filesystem-based implementation so Vercel
  * and Cloudflare read from the same durable store.
+ *
+ * IMPORTANT (2026-04-26): This endpoint also manages Supabase Auth users
+ * (auth.users), not just the app_users registry. Login uses
+ * supabase.auth.signInWithPassword() which checks auth.users — so writing
+ * a password_hash to app_users alone does NOT enable login. POST creates
+ * an auth user; PATCH with `password` updates (or creates) the auth user.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin, appUserToRow, rowToAppUser, AppUserRow } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/**
+ * Find a Supabase Auth user by email, paginating through admin.listUsers().
+ * Supabase JS SDK doesn't expose an email filter, so we scan. Fine for
+ * small user bases (<1000). Returns null if not found.
+ */
+async function findAuthUserByEmail(
+  db: ReturnType<typeof getSupabaseAdmin>,
+  email: string,
+): Promise<{ id: string; email: string } | null> {
+  const target = email.toLowerCase();
+  let page = 1;
+  const perPage = 200;
+  // Cap pagination to avoid infinite loops
+  for (let i = 0; i < 25; i++) {
+    const { data, error } = await db.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+    const users = data?.users ?? [];
+    const hit = users.find((u) => (u.email ?? "").toLowerCase() === target);
+    if (hit) return { id: hit.id, email: hit.email ?? target };
+    if (users.length < perPage) return null;
+    page += 1;
+  }
+  return null;
+}
+
+/**
+ * Ensure a Supabase Auth user exists for `email` with `password`.
+ * - Creates the user if none exists (email_confirm: true so they can log in
+ *   immediately without an email-verification round-trip).
+ * - If the user already exists, updates their password.
+ */
+async function upsertAuthUser(
+  db: ReturnType<typeof getSupabaseAdmin>,
+  email: string,
+  password: string,
+  metadata: Record<string, unknown> = {},
+): Promise<{ ok: true; authId: string } | { ok: false; error: string }> {
+  // Try create first
+  const { data: created, error: createErr } = await db.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: metadata,
+  });
+  if (!createErr && created?.user) {
+    return { ok: true, authId: created.user.id };
+  }
+
+  // If already exists, look it up and update the password
+  const msg = String(createErr?.message ?? "").toLowerCase();
+  const alreadyRegistered =
+    msg.includes("already") || msg.includes("registered") || msg.includes("exists");
+  if (!alreadyRegistered) {
+    return { ok: false, error: createErr?.message ?? "createUser failed" };
+  }
+
+  const existing = await findAuthUserByEmail(db, email);
+  if (!existing) {
+    return { ok: false, error: "auth user create reported duplicate but lookup failed" };
+  }
+  const { error: updErr } = await db.auth.admin.updateUserById(existing.id, {
+    password,
+    user_metadata: metadata,
+  });
+  if (updErr) return { ok: false, error: updErr.message };
+  return { ok: true, authId: existing.id };
+}
 
 export async function GET(_req: NextRequest) {
   try {
@@ -53,6 +127,7 @@ export async function POST(req: NextRequest) {
 
     // Single add
     const user = body?.user;
+    const password = typeof body?.password === "string" ? body.password : "";
     if (!user || !user.id || !user.email || !user.username) {
       return NextResponse.json(
         { ok: false, error: "user payload is required (id, email, username)" },
@@ -77,9 +152,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "username_taken" }, { status: 409 });
     }
 
+    // Provision the Supabase Auth user FIRST so we don't insert an app_users
+    // row that we can't actually log in as. If no password was provided
+    // (legacy/magic-link flow), skip auth provisioning.
+    if (password) {
+      if (password.length < 6) {
+        return NextResponse.json(
+          { ok: false, error: "password must be at least 6 characters" },
+          { status: 400 },
+        );
+      }
+      const auth = await upsertAuthUser(db, email, password, {
+        app_user_id: user.id,
+        username,
+        role: user.role,
+      });
+      if (!auth.ok) {
+        return NextResponse.json(
+          { ok: false, error: `auth provisioning failed: ${auth.error}` },
+          { status: 500 },
+        );
+      }
+    }
+
     const { error: insErr } = await db.from("app_users").insert(appUserToRow(user));
     if (insErr) return NextResponse.json({ ok: false, error: insErr.message }, { status: 500 });
-    return NextResponse.json({ ok: true, user, savedAt: new Date().toISOString() });
+    return NextResponse.json({
+      ok: true,
+      user,
+      authProvisioned: Boolean(password),
+      savedAt: new Date().toISOString(),
+    });
   } catch (err: any) {
     console.error("[POST /api/admin/users]", err);
     return NextResponse.json({ ok: false, error: String(err?.message ?? err) }, { status: 500 });
@@ -90,6 +193,7 @@ export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json();
     const { id, patch } = body ?? {};
+    const password = typeof body?.password === "string" ? body.password : "";
     if (!id || typeof id !== "string" || !patch || typeof patch !== "object") {
       return NextResponse.json({ ok: false, error: "id and patch are required" }, { status: 400 });
     }
@@ -119,13 +223,44 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
+    // Password reset: actually update the Supabase Auth password (or create
+    // the auth user retroactively if it never existed). Without this step,
+    // signInWithPassword would still reject the new password.
+    let authProvisioned = false;
+    if (password) {
+      if (password.length < 6) {
+        return NextResponse.json(
+          { ok: false, error: "password must be at least 6 characters" },
+          { status: 400 },
+        );
+      }
+      const email = String(target.email).toLowerCase();
+      const auth = await upsertAuthUser(db, email, password, {
+        app_user_id: target.id,
+        username: target.username,
+        role: target.role,
+      });
+      if (!auth.ok) {
+        return NextResponse.json(
+          { ok: false, error: `auth password update failed: ${auth.error}` },
+          { status: 500 },
+        );
+      }
+      authProvisioned = true;
+    }
+
     const merged = { ...rowToAppUser(target as AppUserRow), ...patch, id: target.id };
     const { error: updErr } = await db
       .from("app_users")
       .update(appUserToRow(merged))
       .eq("id", id);
     if (updErr) return NextResponse.json({ ok: false, error: updErr.message }, { status: 500 });
-    return NextResponse.json({ ok: true, user: merged, savedAt: new Date().toISOString() });
+    return NextResponse.json({
+      ok: true,
+      user: merged,
+      authProvisioned,
+      savedAt: new Date().toISOString(),
+    });
   } catch (err: any) {
     console.error("[PATCH /api/admin/users]", err);
     return NextResponse.json({ ok: false, error: String(err?.message ?? err) }, { status: 500 });
@@ -177,6 +312,20 @@ export async function DELETE(req: NextRequest) {
     // Best-effort cleanup of the user's data blob
     if (target.storage_key && /^[A-Za-z0-9_-]+$/.test(target.storage_key)) {
       await db.from("user_data").delete().eq("storage_key", target.storage_key);
+    }
+
+    // Best-effort cleanup of the Supabase Auth user. If we leave it behind,
+    // the email becomes "stuck" — re-adding the same email would collide
+    // with the orphaned auth row.
+    try {
+      if (target.email) {
+        const authRow = await findAuthUserByEmail(db, String(target.email));
+        if (authRow) {
+          await db.auth.admin.deleteUser(authRow.id);
+        }
+      }
+    } catch (e) {
+      console.warn("[DELETE /api/admin/users] auth cleanup failed (non-fatal):", e);
     }
 
     return NextResponse.json({ ok: true, removed: userId, savedAt: new Date().toISOString() });

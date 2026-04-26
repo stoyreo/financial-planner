@@ -338,14 +338,20 @@ export async function syncFetchUsersRemote(): Promise<
   }
 }
 
+/**
+ * @param password Plaintext password used to provision the Supabase Auth
+ * user on the server. Without this, the user can't actually log in
+ * (signInWithPassword checks auth.users, not app_users.password_hash).
+ */
 export async function syncAddUserRemote(
   user: AppUser,
+  password?: string,
 ): Promise<{ ok: boolean; error?: string; savedAt?: string }> {
   try {
     const res = await fetch("/api/admin/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user }),
+      body: JSON.stringify({ user, password }),
     });
     const safe = await readJsonSafely(res);
     if (!safe.ok) return { ok: false, error: describeHttpError("POST", "/api/admin/users", safe) };
@@ -355,15 +361,21 @@ export async function syncAddUserRemote(
   }
 }
 
+/**
+ * @param password Optional plaintext password. If provided, the server will
+ * also call supabase.auth.admin.updateUserById() so the new password
+ * actually works at login (or createUser if no auth row exists yet).
+ */
 export async function syncUpdateUserRemote(
   id: string,
   patch: Partial<AppUser>,
+  password?: string,
 ): Promise<{ ok: boolean; error?: string; savedAt?: string }> {
   try {
     const res = await fetch("/api/admin/users", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, patch }),
+      body: JSON.stringify({ id, patch, password }),
     });
     const safe = await readJsonSafely(res);
     if (!safe.ok) return { ok: false, error: describeHttpError("PATCH", "/api/admin/users", safe) };
