@@ -1,5 +1,5 @@
-export const APP_VERSION = "3.3.0";
-export const BUILD_DATE = "2026-04-16";
+export const APP_VERSION = "3.4.0";
+export const BUILD_DATE = "2026-04-26";
 
 export interface ChangelogEntry {
   version: string;
@@ -8,6 +8,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "3.4.0",
+    date: "2026-04-26",
+    changes: [
+      "Sidebar identity label now shows the real account display name for member/admin roles instead of falling back to 'Demo User'",
+      "Newly-created member accounts start with a completely empty profile and empty income/expense/debt/investment lists - no more demo fixture seeded under member namespaces",
+      "findOrCreateUserByEmail now adopts the admin-provisioned remote app_users row on first login (correct displayName, role, storage_key) instead of creating a duplicate local user with demo seed data",
+      "Demo accounts (role=\"demo\") still receive the full demo snapshot - only member/admin starts blank",
+      "Version bump to 3.4.0",
+    ],
+  },
   {
     version: "3.3.0",
     date: "2026-04-16",

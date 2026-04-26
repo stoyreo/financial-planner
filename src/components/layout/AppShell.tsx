@@ -14,6 +14,7 @@ import { Logo } from "@/components/brand/Logo";
 import { VersionUpdateNotification } from "../VersionUpdateNotification";
 import { SyncStatusBadge } from "./SyncStatusBadge";
 import { clearSession, getSession, isAdmin } from "@/lib/auth";
+import { getUserById } from "@/lib/users";
 import {
   LayoutDashboard, User, Users, TrendingUp, CreditCard, PiggyBank,
   Calculator, Sliders, BarChart3, Moon, Sun, Menu, X,
@@ -61,6 +62,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const session = getSession();
   const admin = isAdmin();
   const visibleNav = NAV.filter(n => !n.adminOnly || admin);
+
+  // Sidebar identity label.
+  // For non-demo accounts (admin / member), prefer the AppUser.displayName from
+  // the registry - the profile.fullName field is user-editable and may still be
+  // empty (or stuck on "Demo User") for a newly-created member.
+  const appUser = session ? getUserById(session.userId) : undefined;
+  const isDemoAccount = session?.role === "demo";
+  const displayLabel = (() => {
+    if (isDemoAccount) return `${profile.fullName || "Demo User"} \u00B7 Age ${age}`;
+    const name = (profile.fullName && profile.fullName.trim() && profile.fullName !== "Demo User")
+      ? profile.fullName
+      : (appUser?.displayName || session?.username || "");
+    return age ? `${name} \u00B7 Age ${age}` : name;
+  })();
 
   useEffect(() => { recomputeForecast(); }, []);
   // Close drawer on nav
@@ -165,7 +180,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {sidebarOpen && (
             <div className="flex-1 min-w-0">
               <div className="font-bold text-xs leading-tight truncate">Financial 101 Master crafted by Toy</div>
-              <div className="text-[10px] text-muted-foreground">{profile.fullName} · Age {age}</div>
+              <div className="text-[10px] text-muted-foreground">{displayLabel}</div>
             </div>
           )}
           <button onClick={() => setSidebarOpen(!sidebarOpen)}

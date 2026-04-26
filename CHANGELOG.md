@@ -2,6 +2,37 @@
 
 All notable changes to Financial 101 Master will be documented in this file.
 
+## [3.4.0] - 2026-04-26
+
+### Member Identity & Empty-Start Fixes
+
+#### Fixed
+- **Sidebar identity label** — for `member` and `admin` accounts the upper-left
+  label now resolves to the real registry `displayName` (e.g. "Patipat") instead
+  of the seed value "Demo User". Demo accounts continue to show "Demo User".
+  See `src/components/layout/AppShell.tsx`.
+- **Newly-created members no longer inherit demo data.** When an admin adds a
+  member from `/admin/users`, that member's first login now starts with a
+  completely empty profile and empty income / expense / debt / investment lists.
+  Previously every new member got the "Demo User" fixture (`fullName: "Demo User"`,
+  DOB 1992-06-15, ฿350,000 cash, Somchai's incomes, etc.). The fixture is now
+  only applied for `role="demo"`.
+- **`findOrCreateUserByEmail` adopts remote rows.** On a fresh browser, a member
+  who logs in via Supabase used to spawn a duplicate local AppUser (role
+  re-derived from email, demo data seeded). It now first checks the remote
+  `app_users` table for the email and adopts that row's `displayName`, `role`,
+  and `storage_key` so the admin-provisioned identity is preserved.
+
+#### Added
+- `getEmptySnapshot(displayName)` and `getStartingSnapshot(role, displayName)`
+  in `src/lib/users.ts`. The "starting" helper picks demo vs. empty based on
+  role and is the new single source of truth for first-login seeding.
+
+#### Changed
+- `addUser`, `initUsers`, and `findOrCreateUserByEmail` all route through
+  `getStartingSnapshot` instead of unconditionally calling `getDemoSnapshot`.
+- Version bumped 3.3.0 → 3.4.0.
+
 ## [3.2.0] - 2026-04-16
 
 ### Multi-User & DEMO Account System
@@ -120,69 +151,4 @@ All notable changes to Financial 101 Master will be documented in this file.
 - New utility functions in `debt-payoff.ts`:
   - `calculatePayoffYear()`: Core payoff calculation
   - `formatPayoffDisplay()`: User-friendly formatting
-  - `calculateMultiplePayoffs()`: Batch payoff calculations
-- New AI insights module with 5 menu-specific analysis functions
-- Expert skill structure with clear function interfaces
-- Better separation of concerns (engine vs. UI)
-
-#### Bug Fixes
-
-- Fixed payoff calculation for zero-payment loans (now shows "Never")
-- Corrected monthly payment calculations in debt cards
-- Improved handling of edge cases in payoff metrics
-
-#### Performance
-
-- Debt payoff calculations are O(1) - instant computation
-- AI insights cache friendly (minimal re-renders)
-- Mortgage simulator selector doesn't impact performance
-
-#### Documentation
-
-- SKILL.md files for both expert advisors
-- Clear function signatures and parameter descriptions
-- Example queries for each skill
-- Category tags for skill discovery
-
-### Version Information
-
-- **Version:** 3.0.0
-- **Build Date:** 2026-04-15
-- **Node.js:** ^14.0.0
-- **Next.js:** 14.2.29
-- **React:** ^18
-
-### Migration Notes
-
-No breaking changes from V2.x. All existing features remain functional and unchanged.
-
-### Files Added
-
-```
-src/lib/engine/debt-payoff.ts
-src/lib/ai-insights.ts
-src/skills/life-retirement-planner/SKILL.md
-src/skills/life-retirement-planner/functions.ts
-src/skills/investment-expert/SKILL.md
-src/skills/investment-expert/functions.ts
-START V3.bat
-```
-
-### Files Modified
-
-```
-src/app/debts/page.tsx (added checkbox selection + payoff year)
-package.json (version bump to 3.0.0)
-```
-
----
-
-## [2.0.0] - Previous Release
-
-Refer to RELEASE_NOTES.md for Phase 2 features.
-
----
-
-## Support
-
-For issues or feature requests, please create an issue in the project repository.
+  - `calculateMultiplePayoffs()`: Batch payoff c

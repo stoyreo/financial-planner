@@ -140,7 +140,7 @@ export async function addUser(input: {
   };
 
   saveUsers([...existing, newUser]);
-  persistUserData(storageKey, getDemoSnapshot());
+  persistUserData(storageKey, getStartingSnapshot(newUser.role, newUser.displayName));
 
   return { ok: true, user: newUser };
 }
@@ -192,6 +192,42 @@ export function getDemoSnapshot() {
     scenarios: seedScenarios,
     activeScenarioId: "base",
   };
+}
+
+/**
+ * Empty starting snapshot for newly-created member/admin accounts.
+ * Members should NOT inherit "Demo User" fixture data - they start blank
+ * and fill in their own profile + financials. Only role="demo" gets demo seed.
+ */
+export function getEmptySnapshot(displayName: string = "") {
+  return {
+    profile: {
+      ...seedProfile,
+      fullName: displayName,
+      dateOfBirth: "",
+      country: "",
+      currency: "THB",
+      maritalStatus: "Single" as const,
+      householdNotes: "",
+      notes: "",
+      currentCashBalance: 0,
+      emergencyFundTargetMonths: 6,
+      targetMinCashBalance: 0,
+    },
+    incomes: [],
+    expenses: [],
+    debts: [],
+    investments: [],
+    retirement: seedRetirement,
+    tax: seedTax,
+    scenarios: seedScenarios,
+    activeScenarioId: "base",
+  };
+}
+
+/** Pick the right starter snapshot based on role + displayName. */
+export function getStartingSnapshot(role: UserRole, displayName: string = "") {
+  return role === "demo" ? getDemoSnapshot() : getEmptySnapshot(displayName);
 }
 
 export async function saveRemoteUserData(storageKey: string, data: any): Promise<{ ok: boolean; savedAt?: string; error?: string }> {
@@ -253,7 +289,7 @@ export async function initUsers(toyPasswordHash: string): Promise<void> {
       for (const u of remote.users) {
         if (!loadUserData(u.storageKey)) {
           if (u.id === "user_toy") persistUserData(u.storageKey, toyRealData);
-          else persistUserData(u.storageKey, getDemoSnapshot());
+          else persistUserData(u.storageKey, getStartingSnapshot(u.role, u.displayName));
         }
       }
     } else {
@@ -470,6 +506,29 @@ export async function findOrCreateUserByEmail(email: string, supabaseUserId: str
     return existing;
   }
 
+  // Before creating a fresh local AppUser, see if the admin already provisioned
+  // one in the remote app_users registry. If so, adopt that row - it has the
+  // correct displayName, role, and storage_key.
+  try {
+    const remote = await syncFetchUsersRemote();
+    if (remote.ok) {
+      const remoteHit = remote.users.find(
+        (u) => u.email?.toLowerCase() === normalizedEmail,
+      );
+      if (remoteHit) {
+        const users = getUsers();
+        saveUsers([...users, remoteHit]);
+        if (!loadUserData(remoteHit.storageKey)) {
+          persistUserData(
+            remoteHit.storageKey,
+            getStartingSnapshot(remoteHit.role, remoteHit.displayName),
+          );
+        }
+        return remoteHit;
+      }
+    }
+  } catch { /* fall through to fresh create */ }
+
   const username = normalizedEmail.split("@")[0];
   const id = `user_${supabaseUserId.slice(0, 12)}`;
   const storageKey = `fp_data_${username.toLowerCase().replace(/[^a-z0-9]/g, "_")}`;
@@ -494,7 +553,8 @@ export async function findOrCreateUserByEmail(email: string, supabaseUserId: str
   const users = getUsers();
   saveUsers([...users, newUser]);
 
-  persistUserData(storageKey, getDemoSnapshot());
+  // Empty starter for member/admin; demo fixture only for role="demo".
+  persistUserData(storageKey, getStartingSnapshot(newUser.role, newUser.displayName));
 
   await syncAddUserRemote(newUser);
 
