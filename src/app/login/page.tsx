@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getSession, synthesizeSession, ensureAppUserFromSupabase } from "@/lib/auth";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
+import { Logo } from "@/components/brand/Logo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -98,10 +99,8 @@ export default function LoginPage() {
       <div className="w-full max-w-sm relative">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary/30 mb-3">
-            <span className="text-primary-foreground font-bold text-2xl">฿</span>
-          </div>
-          <h1 className="text-xl font-bold">FinancePlan TH</h1>
+          <Logo size={56} className="mb-3" />
+          <h1 className="text-xl font-bold">Financial 101 Master crafted by Toy</h1>
           <p className="text-sm text-muted-foreground mt-1">Personal Financial Planner</p>
         </div>
 
@@ -163,15 +162,6 @@ export default function LoginPage() {
             >
               {state === "loading" ? "Signing in..." : "Sign In"}
             </button>
-
-            <div className="text-center">
-              <p className="text-xs text-muted-foreground">
-                Don't have an account?{" "}
-                <a href="/signup" className="text-primary hover:underline font-medium">
-                  Sign Up
-                </a>
-              </p>
-            </div>
           </form>
         </div>
       </div>

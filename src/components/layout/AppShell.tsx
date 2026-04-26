@@ -6,6 +6,7 @@ import { useTheme } from "next-themes";
 import { useStore } from "@/lib/store";
 import { cn, calcAge } from "@/lib/utils";
 import { VersionPanel } from "./VersionPanel";
+import { Logo } from "@/components/brand/Logo";
 // BackupWidget removed from sidebar on 2026-04-18 (user request). If you need
 // Google Drive backup UI, import and render <BackupWidget /> on a dedicated
 // settings page. See src/components/layout/BackupWidget.tsx.
@@ -160,12 +161,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       )}>
         {/* Logo */}
         <div className="flex items-center gap-2 px-3 py-4 border-b border-border">
-          <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center shrink-0">
-            <span className="text-primary-foreground font-bold text-xs">฿</span>
-          </div>
+          <Logo size={28} />
           {sidebarOpen && (
             <div className="flex-1 min-w-0">
-              <div className="font-bold text-xs leading-tight truncate">Financial 101 Master</div>
+              <div className="font-bold text-xs leading-tight truncate">Financial 101 Master crafted by Toy</div>
               <div className="text-[10px] text-muted-foreground">{profile.fullName} · Age {age}</div>
             </div>
           )}
@@ -234,10 +233,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Mobile top bar */}
         <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-card shrink-0">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-[10px]">฿</span>
-            </div>
-            <span className="font-bold text-sm">Financial 101 Master</span>
+            <Logo size={24} />
+            <span className="font-bold text-sm">Financial 101 Master crafted by Toy</span>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="p-1.5 hover:bg-accent rounded-md">

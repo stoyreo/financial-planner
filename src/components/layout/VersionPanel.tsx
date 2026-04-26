@@ -53,7 +53,7 @@ export function VersionPanel() {
         v{APP_VERSION}
       </button>
 
-      <Modal open={open} onClose={() => setOpen(false)} title={`FinancePlan TH — v${APP_VERSION}`} className="max-w-xl">
+      <Modal open={open} onClose={() => setOpen(false)} title={`Financial 101 Master crafted by Toy — v${APP_VERSION}`} className="max-w-xl">
         {/* Tab switcher */}
         <div className="flex gap-1 mb-4 bg-muted p-1 rounded-lg">
           {(["changelog", "snapshots"] as const).map(t => (

@@ -9,7 +9,7 @@ import SyncStatusBar from "@/components/SyncStatusBar";
 const AutoSync = dynamic(() => import("@/components/AutoSync"), { ssr: false });
 
 export const metadata: Metadata = {
-  title: "Financial 101 Master",
+  title: "Financial 101 Master crafted by Toy",
   description: "Thailand personal financial planning",
 };
 

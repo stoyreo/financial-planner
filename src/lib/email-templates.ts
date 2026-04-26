@@ -1,5 +1,5 @@
 /**
- * Financial 101 Master - Email Template System
+ * Financial 101 Master crafted by Toy - Email Template System
  * Generates beautiful HTML emails with branded buttons and links
  */
 
@@ -16,7 +16,7 @@ interface EmailButton {
 }
 
 /**
- * Base email template with Financial 101 Master branding
+ * Base email template with Financial 101 Master crafted by Toy branding
  */
 function createBaseTemplate(
   title: string,
@@ -24,7 +24,7 @@ function createBaseTemplate(
   buttons?: EmailButton[],
   footerMessage?: string
 ): EmailTemplate {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://financeplan-th.pages.dev';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://financial-planner.vercel.app';
   const buttonColor = '#4F46E5'; // Indigo 600
 
   const buttonsHTML = buttons
@@ -161,7 +161,7 @@ function createBaseTemplate(
       <body>
         <div class="email-container">
           <div class="header">
-            <h1>Financial 101 Master</h1>
+            <h1>Financial 101 Master crafted by Toy</h1>
             <p>${title}</p>
           </div>
           <div class="content">
@@ -171,12 +171,12 @@ function createBaseTemplate(
           <div class="footer">
             <p>${footerMessage || 'Financial planning made simple. Manage your wealth with confidence.'}</p>
             <p>
-              <a href="${appUrl}">Visit Financial 101 Master</a> |
+              <a href="${appUrl}">Visit Financial 101 Master crafted by Toy</a> |
               <a href="${appUrl}/help">Help Center</a> |
               <a href="mailto:toy.theeranan@gmail.com">Contact Support</a>
             </p>
             <p style="margin-top: 16px; font-size: 12px; color: #9ca3af;">
-              © 2026 Financial 101 Master. All rights reserved.
+              © 2026 Financial 101 Master crafted by Toy. All rights reserved.
             </p>
           </div>
         </div>
@@ -193,7 +193,7 @@ ${buttons ? buttons.map((btn) => `${btn.text}: ${btn.url}`).join('\n') : ''}
 
 ${footerMessage || 'Financial planning made simple. Manage your wealth with confidence.'}
 
-Financial 101 Master - https://financeplan-th.pages.dev
+Financial 101 Master crafted by Toy - https://financial-planner.vercel.app
   `.trim();
 
   return { subject: title, html, text: textVersion };
@@ -207,10 +207,10 @@ export function googleDriveSyncEmail(
   backupCount: number,
   backupSize: string
 ): EmailTemplate {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://financeplan-th.pages.dev';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://financial-planner.vercel.app';
   const content = `
     <h2>Backup Completed Successfully</h2>
-    <p>Your Financial 101 Master data has been backed up to Google Drive.</p>
+    <p>Your Financial 101 Master crafted by Toy data has been backed up to Google Drive.</p>
 
     <div class="highlight">
       <strong>Account:</strong> ${accountName}<br>
@@ -263,7 +263,7 @@ export function aiInsightsEmail(
 
   const content = `
     <h2>Your AI Insights Are Ready</h2>
-    <p>Financial 101 Master has analyzed your financial data and generated personalized insights.</p>
+    <p>Financial 101 Master crafted by Toy has analyzed your financial data and generated personalized insights.</p>
 
     <div class="divider"></div>
 
@@ -277,7 +277,7 @@ export function aiInsightsEmail(
   return createBaseTemplate(
     '📊 Your AI Insights Are Ready',
     content,
-    [{ text: 'View All Insights', url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://financeplan-th.pages.dev'}/scenarios` }],
+    [{ text: 'View All Insights', url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://financial-planner.vercel.app'}/scenarios` }],
     'Data-driven recommendations for your financial success.'
   );
 }
@@ -320,7 +320,7 @@ export function mortgagePayoffEmail(
   return createBaseTemplate(
     '🎯 Debt Payoff Milestone',
     content,
-    [{ text: 'View Mortgage Plan', url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://financeplan-th.pages.dev'}/debts?tab=mortgage` }],
+    [{ text: 'View Mortgage Plan', url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://financial-planner.vercel.app'}/debts?tab=mortgage` }],
     'You\'re on track to financial freedom.'
   );
 }
@@ -357,8 +357,8 @@ export function expertRecommendationEmail(
     `💼 ${expertTitle} Recommendation`,
     content,
     [
-      { text: 'View Full Analysis', url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://financeplan-th.pages.dev'}/scenarios` },
-      { text: 'Schedule Review', url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://financeplan-th.pages.dev'}/profile` },
+      { text: 'View Full Analysis', url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://financial-planner.vercel.app'}/scenarios` },
+      { text: 'Schedule Review', url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://financial-planner.vercel.app'}/profile` },
     ],
     `Your ${expertTitle.toLowerCase()} is here to help you succeed.`
   );
@@ -369,7 +369,7 @@ export function expertRecommendationEmail(
  */
 export function welcomeEmail(userName: string, accountType: string): EmailTemplate {
   const content = `
-    <h2>Welcome to Financial 101 Master, ${userName}!</h2>
+    <h2>Welcome to Financial 101 Master crafted by Toy, ${userName}!</h2>
     <p>We're excited to have you on board. Your account is fully set up and ready to use.</p>
 
     <div class="highlight">
@@ -391,9 +391,9 @@ export function welcomeEmail(userName: string, accountType: string): EmailTempla
   `;
 
   return createBaseTemplate(
-    '👋 Welcome to Financial 101 Master',
+    '👋 Welcome to Financial 101 Master crafted by Toy',
     content,
-    [{ text: 'Start Planning', url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://financeplan-th.pages.dev'}/income` }],
+    [{ text: 'Start Planning', url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://financial-planner.vercel.app'}/income` }],
     'Your financial success starts here.'
   );
 }
@@ -433,7 +433,7 @@ export function systemAlertEmail(
   return createBaseTemplate(
     `${severityIcon[severity]} ${alertTitle}`,
     content,
-    [{ text: 'Review Account', url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://financeplan-th.pages.dev'}/profile` }],
+    [{ text: 'Review Account', url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://financial-planner.vercel.app'}/profile` }],
     'Keeping you informed and secure.'
   );
 }
@@ -458,7 +458,7 @@ export function deploymentNotificationEmail(
 
   const content = `
     <h2>🚀 Deployment Successful</h2>
-    <p>Financial 101 Master has been successfully deployed to production.</p>
+    <p>Financial 101 Master crafted by Toy has been successfully deployed to production.</p>
 
     <div class="highlight" style="border-left-color: #22c55e;">
       <strong>Version:</strong> ${version}<br>

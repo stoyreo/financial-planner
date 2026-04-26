@@ -15,7 +15,7 @@ export interface Account {
 }
 
 /**
- * Single account for the Financial 101 Master app
+ * Single account for the Financial 101 Master crafted by Toy app
  */
 export const MAIN_ACCOUNT: Account = {
   id: "toy",
