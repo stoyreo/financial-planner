@@ -7,15 +7,17 @@ import {
   getUserById,
   removeUser,
   updateUser,
+  saveUsers,
   syncAddUserRemote,
   syncUpdateUserRemote,
   syncRemoveUserRemote,
+  syncFetchUsersRemote,
   type AppUser,
   type UserRole,
 } from "@/lib/users";
 import { useStore } from "@/lib/store";
 import { changePassword, isAdmin } from "@/lib/auth";
-import { UserPlus, KeyRound, UserX, UserCheck, Trash2, X } from "lucide-react";
+import { UserPlus, KeyRound, UserX, UserCheck, Trash2, X, RefreshCw } from "lucide-react";
 
 type DialogKind = "add" | "password" | "remove" | null;
 
@@ -44,12 +46,32 @@ export default function AdminUsersPage() {
   // Remove confirmation
   const [typedEmail, setTypedEmail] = useState("");
 
-  function loadUsers() {
-    setLoading(true);
+  // Remote-first loader: pull truth from Supabase, mirror to localStorage,
+  // then render. Falls back to local cache if the network/server is down.
+  // This prevents admin/server drift (e.g. when Supabase auth auto-creates
+  // a row via findOrCreateUserByEmail on a different browser).
+  async function loadUsers(opts?: { silent?: boolean }) {
+    if (!opts?.silent) setLoading(true);
     try {
-      // Client-side: read registry directly from localStorage (works on Cloudflare Pages too)
-      setUsers(getUsers());
+      const remote = await syncFetchUsersRemote();
+      if (remote.ok) {
+        // Preserve local-only passwordHash if the server returned an empty one
+        // (the registry table doesn't always store it for magic-link users).
+        const localById = new Map(getUsers().map((u) => [u.id, u]));
+        const merged = remote.users.map((r) => {
+          const local = localById.get(r.id);
+          return r.passwordHash ? r : { ...r, passwordHash: local?.passwordHash ?? "" };
+        });
+        saveUsers(merged);
+        setUsers(merged);
+      } else {
+        setUsers(getUsers());
+        if (!opts?.silent) {
+          flash("err", `Server fetch failed (${remote.error}) — showing local cache.`);
+        }
+      }
     } catch (e) {
+      setUsers(getUsers());
       setMsg({ kind: "err", text: `Failed to load users: ${String(e)}` });
     }
     setLoading(false);
@@ -105,8 +127,27 @@ export default function AdminUsersPage() {
       removeUser(result.user.id);
       setRemoteSyncStatus("error", `Add user failed: ${remote.error}`);
       setBusy(false);
-      flash("err", `Added locally but remote sync failed: ${remote.error}. Rolled back.`);
-      loadUsers();
+
+      // For "*_taken" conflicts the row already exists server-side but may
+      // not be in the admin's local view — refresh from server and explain.
+      const isConflict =
+        remote.error === "email_taken" ||
+        remote.error === "username_taken" ||
+        remote.error === "id_taken";
+      if (isConflict) {
+        await loadUsers({ silent: true });
+        const which =
+          remote.error === "email_taken" ? "email"
+          : remote.error === "username_taken" ? "username"
+          : "id";
+        flash(
+          "err",
+          `This ${which} already exists on the server. The list has been refreshed — review existing rows before retrying.`,
+        );
+      } else {
+        flash("err", `Added locally but remote sync failed: ${remote.error}. Rolled back.`);
+        loadUsers();
+      }
       return;
     }
     setRemoteSyncStatus("completed");
@@ -234,12 +275,22 @@ export default function AdminUsersPage() {
     <div className="p-6 max-w-5xl mx-auto text-foreground">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-foreground">Admin — User Management</h1>
-        <button
-          onClick={() => setDialog("add")}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition"
-        >
-          <UserPlus size={16} /> Add User
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => loadUsers()}
+            disabled={busy || loading}
+            title="Pull latest user list from server"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-foreground text-sm font-semibold hover:bg-accent disabled:opacity-50 transition"
+          >
+            <RefreshCw size={16} /> Refresh
+          </button>
+          <button
+            onClick={() => setDialog("add")}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition"
+          >
+            <UserPlus size={16} /> Add User
+          </button>
+        </div>
       </div>
 
       {msg && (
