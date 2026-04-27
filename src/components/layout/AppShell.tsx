@@ -55,7 +55,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [importStatus, setImportStatus] = useState<ImportStatus>({ show: false, phase: "parsing" });
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
-  const { profile, recomputeForecast, exportData, loadSeedData, saveUserNamespace, saveUserNamespaceAsync } = useStore();
+  const { profile, recomputeForecast, exportData, exportDataXlsx, importDataXlsx, loadSeedData, saveUserNamespace, saveUserNamespaceAsync } = useStore();
   const router = useRouter();
   const handleLogout = () => { clearSession(); router.replace("/login"); };
   const age = calcAge(profile.dateOfBirth);
@@ -114,15 +114,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [theme, userId]);
 
   const handleExport = () => {
-    const blob = new Blob([exportData()], { type: "application/json" });
+    const blob = exportDataXlsx();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = "financial-plan.json"; a.click();
+    a.href = url; a.download = `financial-plan_${new Date().toISOString().slice(0, 10)}.xlsx`; a.click();
     URL.revokeObjectURL(url);
   };
   const handleImport = () => {
     const input = document.createElement("input");
-    input.type = "file"; input.accept = ".json";
+    input.type = "file"; input.accept = ".xlsx,.json";
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
@@ -131,14 +131,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       setImportStatus({ show: true, phase: "parsing", fileName: file.name });
 
       try {
-        const json = await file.text();
+        // Detect file type by extension
+        const isXlsx = file.name.endsWith(".xlsx");
+        let success = false;
 
-        // Parse and import
-        const success = useStore.getState().importData(json);
-        if (!success) {
-          setImportStatus({ show: true, phase: "done_error", fileName: file.name, error: "Invalid JSON or data format" });
-          setTimeout(() => setImportStatus(prev => ({ ...prev, show: false })), 5000);
-          return;
+        if (isXlsx) {
+          // Handle XLSX import
+          success = await useStore.getState().importDataXlsx(file);
+          if (!success) {
+            setImportStatus({ show: true, phase: "done_error", fileName: file.name, error: "Invalid XLSX file or data format" });
+            setTimeout(() => setImportStatus(prev => ({ ...prev, show: false })), 5000);
+            return;
+          }
+        } else {
+          // Handle JSON import
+          const json = await file.text();
+          success = useStore.getState().importData(json);
+          if (!success) {
+            setImportStatus({ show: true, phase: "done_error", fileName: file.name, error: "Invalid JSON or data format" });
+            setTimeout(() => setImportStatus(prev => ({ ...prev, show: false })), 5000);
+            return;
+          }
         }
 
         // Save locally
