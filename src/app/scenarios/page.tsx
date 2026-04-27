@@ -9,8 +9,10 @@ import {
   analyzeSavingsAndDebt,
   analyzeGeopoliticalHedge,
   analyzeAlstomSTI,
+  analyzeAlstomSTIWithLive,
   type AnalysisResult,
   type AlstomSTIAnalysis,
+  type AlstomQuote,
 } from "@/lib/engine/ai-scenarios";
 import { thb, pct } from "@/lib/utils";
 import type { Scenario, ScenarioAssumptions } from "@/lib/types";
@@ -61,6 +63,34 @@ function AssumptionField({ label, value, onChange, hint, unit = "" }: {
   );
 }
 
+function SensitivityGauge({ name, base, low, high, unit }: {
+  name: string; base: number; low: number; high: number; unit: string;
+}) {
+  const span = Math.max(Math.abs(high - base), Math.abs(base - low)) || 1;
+  const pct = (v: number) => 50 + ((v - base) / span) * 50;
+
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex justify-between text-xs mb-2">
+          <span className="font-medium">{name}</span>
+          <span className="text-muted-foreground">±20% sensitivity</span>
+        </div>
+        <div className="relative h-3 mt-3 rounded-full bg-muted overflow-hidden">
+          <div className="absolute top-0 bottom-0 bg-red-500/60" style={{ left: 0, width: `${pct(low)}%` }} />
+          <div className="absolute top-0 bottom-0 bg-green-500/60" style={{ left: `${pct(low)}%`, width: `${pct(high) - pct(low)}%` }} />
+          <div className="absolute top-0 bottom-0 w-0.5 bg-foreground" style={{ left: "50%" }} />
+        </div>
+        <div className="grid grid-cols-3 mt-2 text-[11px] text-center gap-2">
+          <span className="text-red-500 font-medium">−20%<br/>{thb(low)}</span>
+          <span className="font-semibold">{thb(base)}</span>
+          <span className="text-green-500 font-medium">+20%<br/>{thb(high)}</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function ScenariosPage() {
   const { scenarios, activeScenarioId, addScenario, updateScenario, deleteScenario, setActiveScenario,
     profile, incomes, expenses, debts, investments, retirement, tax } = useStore();
@@ -75,20 +105,32 @@ export default function ScenariosPage() {
 
   useEffect(() => {
     setLoadingAnalyses(true);
-    try {
-      const results: AnalysisResult[] = [
-        analyzeInvestmentOptimization({ investments, profile, income: incomes, expenses, debts }),
-        analyzeTaxPlanning({ profile, income: incomes, investments, debts, tax }),
-        analyzeRiskAssessment({ profile, investments, debts, income: incomes, expenses }),
-        analyzeSavingsAndDebt({ profile, income: incomes, expenses, debts, investments }),
-        analyzeGeopoliticalHedge({ investments, profile }),
-      ];
-      setAnalyses(results);
-      setAlstomSTI(analyzeAlstomSTI());
-    } catch (e) {
-      console.error("Analysis error:", e);
-    }
-    setLoadingAnalyses(false);
+    (async () => {
+      try {
+        const results: AnalysisResult[] = [
+          analyzeInvestmentOptimization({ investments, profile, income: incomes, expenses, debts }),
+          analyzeTaxPlanning({ profile, income: incomes, investments, debts, tax }),
+          analyzeRiskAssessment({ profile, investments, debts, income: incomes, expenses }),
+          analyzeSavingsAndDebt({ profile, income: incomes, expenses, debts, investments }),
+          analyzeGeopoliticalHedge({ investments, profile }),
+        ];
+        setAnalyses(results);
+
+        // Fetch live Alstom quote
+        try {
+          const r = await fetch("/api/alstom/quote", { cache: "no-store" });
+          const q: AlstomQuote | null = r.ok ? await r.json() : null;
+          const analysis = analyzeAlstomSTIWithLive(q);
+          setAlstomSTI(analysis);
+        } catch {
+          setAlstomSTI(analyzeAlstomSTI());
+        }
+      } catch (e) {
+        console.error("Analysis error:", e);
+        setAlstomSTI(analyzeAlstomSTI());
+      }
+      setLoadingAnalyses(false);
+    })();
   }, [profile, incomes, expenses, debts, investments, retirement, tax]);
 
   useEffect(() => {
@@ -114,6 +156,38 @@ export default function ScenariosPage() {
     const forecast = generateYearlyForecast({ profile, incomes, expenses, debts, investments, retirement, scenario });
     return { scenario, forecast };
   }).filter(Boolean) as Array<{ scenario: Scenario; forecast: ReturnType<typeof generateYearlyForecast> }>;
+
+  const sensitivityGauges = (() => {
+    if (comparisonForecasts.length === 0) return [];
+    const activeScenario = comparisonForecasts[0].scenario;
+    const baseForecast = comparisonForecasts[0].forecast;
+    const horizonIdx = Math.min(30, baseForecast.length - 1);
+    const horizonYear = baseForecast[horizonIdx]?.netWorth ?? 0;
+
+    // Compute ±20% scenarios for key variables
+    const variables: Array<{ name: string; key: keyof ScenarioAssumptions; multiplier: number }> = [
+      { name: "Income Growth", key: "incomeGrowthRate", multiplier: 0.04 },
+      { name: "Inflation Rate", key: "inflationRate", multiplier: 0.03 },
+      { name: "Investment Return", key: "investmentReturnRate", multiplier: 0.07 },
+      { name: "Mortgage Payment", key: "mortgageExtraMonthlyPayment", multiplier: 1 },
+      { name: "Annual Savings", key: "annualBonusAmount", multiplier: 100_000 },
+      { name: "Retirement Age", key: "retirementAge", multiplier: 65 },
+    ];
+
+    return variables.map(v => {
+      const baseVal = (activeScenario.assumptions[v.key] ?? v.multiplier) as number;
+      const lowAssumptions = { ...activeScenario.assumptions, [v.key]: baseVal * 0.8 };
+      const highAssumptions = { ...activeScenario.assumptions, [v.key]: baseVal * 1.2 };
+
+      const lowForecast = generateYearlyForecast({ profile, incomes, expenses, debts, investments, retirement, scenario: { ...activeScenario, assumptions: lowAssumptions } });
+      const highForecast = generateYearlyForecast({ profile, incomes, expenses, debts, investments, retirement, scenario: { ...activeScenario, assumptions: highAssumptions } });
+
+      const lowVal = lowForecast[horizonIdx]?.netWorth ?? 0;
+      const highVal = highForecast[horizonIdx]?.netWorth ?? 0;
+
+      return { name: v.name, base: horizonYear, low: lowVal, high: highVal };
+    });
+  })();
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -256,6 +330,21 @@ export default function ScenariosPage() {
                     );
                   })}
                 </div>
+
+                {/* Sensitivity Insights */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Sensitivity Insights (±20% variation)</CardTitle>
+                    <p className="text-xs text-muted-foreground mt-1">Impact on 30-year net worth projections</p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {sensitivityGauges.map((g, i) => (
+                        <SensitivityGauge key={i} name={g.name} base={g.base} low={g.low} high={g.high} unit="฿" />
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
               </>
             )}
           </div>
@@ -294,12 +383,185 @@ export default function ScenariosPage() {
         </TabsContent>
       </Tabs>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editId ? "Edit Scenario" : "New Scenario"} className="max-w-2xl">
-        <div className="space-y-4">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editId ? "Edit Scenario" : "New Scenario"} className="max-w-4xl">
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto">
           <div>
             <Label>Scenario Name</Label>
             <Input value={formData.name} onChange={e => setField("name", e.target.value)} className="mt-1" />
           </div>
+
+          <div>
+            <Label>Description</Label>
+            <Input value={formData.description} onChange={e => setField("description", e.target.value)} className="mt-1" placeholder="What changes in this scenario?" />
+          </div>
+
+          {/* Growth & Inflation */}
+          <details className="border border-border rounded-lg p-3">
+            <summary className="cursor-pointer font-semibold text-sm">Growth & Inflation</summary>
+            <div className="space-y-3 mt-3 grid grid-cols-2 gap-3">
+              <AssumptionField
+                label="Income Growth Rate"
+                value={formData.assumptions.incomeGrowthRate}
+                onChange={v => setField("assumptions", { ...formData.assumptions, incomeGrowthRate: v })}
+                unit="%"
+                hint="Annual growth rate for income"
+              />
+              <AssumptionField
+                label="Expense Inflation Override"
+                value={formData.assumptions.expenseInflationOverride}
+                onChange={v => setField("assumptions", { ...formData.assumptions, expenseInflationOverride: v })}
+                unit="%"
+                hint="Override default inflation rate"
+              />
+              <AssumptionField
+                label="Investment Return Rate"
+                value={formData.assumptions.investmentReturnRate}
+                onChange={v => setField("assumptions", { ...formData.assumptions, investmentReturnRate: v })}
+                unit="%"
+                hint="Expected annual returns"
+              />
+              <AssumptionField
+                label="Investment Volatility"
+                value={formData.assumptions.investmentVolatility}
+                onChange={v => setField("assumptions", { ...formData.assumptions, investmentVolatility: v })}
+                unit="%"
+                hint="Standard deviation for sensitivity bands"
+              />
+            </div>
+          </details>
+
+          {/* Mortgage */}
+          <details className="border border-border rounded-lg p-3">
+            <summary className="cursor-pointer font-semibold text-sm">Mortgage</summary>
+            <div className="space-y-3 mt-3 grid grid-cols-2 gap-3">
+              <AssumptionField
+                label="Extra Monthly Payment"
+                value={formData.assumptions.mortgageExtraMonthlyPayment}
+                onChange={v => setField("assumptions", { ...formData.assumptions, mortgageExtraMonthlyPayment: v })}
+                hint="Extra principal payment per month"
+              />
+              <AssumptionField
+                label="Annual Lump Sum Prepayment"
+                value={formData.assumptions.annualLumpSumPrepayment}
+                onChange={v => setField("assumptions", { ...formData.assumptions, annualLumpSumPrepayment: v })}
+                hint="One-time annual prepayment"
+              />
+              <AssumptionField
+                label="Refinance Year"
+                value={formData.assumptions.refinanceYear}
+                onChange={v => setField("assumptions", { ...formData.assumptions, refinanceYear: v })}
+                unit="yr"
+                hint="Year to refinance"
+              />
+              <AssumptionField
+                label="Refinance Rate"
+                value={formData.assumptions.refinanceRate}
+                onChange={v => setField("assumptions", { ...formData.assumptions, refinanceRate: v })}
+                unit="%"
+                hint="New interest rate"
+              />
+              <AssumptionField
+                label="Mortgage Rate Change"
+                value={formData.assumptions.mortgageRateChange}
+                onChange={v => setField("assumptions", { ...formData.assumptions, mortgageRateChange: v })}
+                unit="%"
+                hint="Rate change magnitude"
+              />
+              <AssumptionField
+                label="Rate Change Year"
+                value={formData.assumptions.mortgageRateChangeYear}
+                onChange={v => setField("assumptions", { ...formData.assumptions, mortgageRateChangeYear: v })}
+                unit="yr"
+                hint="Year rate change occurs"
+              />
+            </div>
+          </details>
+
+          {/* Career Events */}
+          <details className="border border-border rounded-lg p-3">
+            <summary className="cursor-pointer font-semibold text-sm">Career Events</summary>
+            <div className="space-y-3 mt-3 grid grid-cols-2 gap-3">
+              <AssumptionField
+                label="Salary Raise Year"
+                value={formData.assumptions.salaryRaiseYear}
+                onChange={v => setField("assumptions", { ...formData.assumptions, salaryRaiseYear: v })}
+                unit="yr"
+                hint="Year of pay bump"
+              />
+              <AssumptionField
+                label="Salary Raise Factor"
+                value={formData.assumptions.salaryRaiseFactor}
+                onChange={v => setField("assumptions", { ...formData.assumptions, salaryRaiseFactor: v })}
+                hint="e.g., 1.15 = +15%"
+              />
+              <AssumptionField
+                label="Income Shock Year"
+                value={formData.assumptions.incomeShockYear}
+                onChange={v => setField("assumptions", { ...formData.assumptions, incomeShockYear: v })}
+                unit="yr"
+                hint="Year shock occurs"
+              />
+              <AssumptionField
+                label="Income Shock Factor"
+                value={formData.assumptions.incomeShockFactor}
+                onChange={v => setField("assumptions", { ...formData.assumptions, incomeShockFactor: v })}
+                hint="e.g., 0.5 = -50%"
+              />
+              <AssumptionField
+                label="Income Shock Duration"
+                value={formData.assumptions.incomeShockDuration}
+                onChange={v => setField("assumptions", { ...formData.assumptions, incomeShockDuration: v })}
+                unit="mo"
+                hint="Duration in months"
+              />
+              <AssumptionField
+                label="Retirement Age"
+                value={formData.assumptions.retirementAge}
+                onChange={v => setField("assumptions", { ...formData.assumptions, retirementAge: v })}
+                unit="yr"
+                hint="Age to retire"
+              />
+            </div>
+          </details>
+
+          {/* Cash Events */}
+          <details className="border border-border rounded-lg p-3">
+            <summary className="cursor-pointer font-semibold text-sm">Cash Events</summary>
+            <div className="space-y-3 mt-3 grid grid-cols-2 gap-3">
+              <AssumptionField
+                label="Annual Bonus"
+                value={formData.assumptions.annualBonusAmount}
+                onChange={v => setField("assumptions", { ...formData.assumptions, annualBonusAmount: v })}
+                hint="Annual bonus amount"
+              />
+              <AssumptionField
+                label="Tax Relief Investment"
+                value={formData.assumptions.taxReliefInvestmentAmount}
+                onChange={v => setField("assumptions", { ...formData.assumptions, taxReliefInvestmentAmount: v })}
+                hint="Tax relief investment amount"
+              />
+              <AssumptionField
+                label="Emergency Fund Target"
+                value={formData.assumptions.emergencyFundTargetMonths}
+                onChange={v => setField("assumptions", { ...formData.assumptions, emergencyFundTargetMonths: v })}
+                unit="mo"
+                hint="Months of expenses"
+              />
+              <AssumptionField
+                label="Windfall Year"
+                value={formData.assumptions.windfallYear}
+                onChange={v => setField("assumptions", { ...formData.assumptions, windfallYear: v })}
+                unit="yr"
+                hint="Year of windfall"
+              />
+              <AssumptionField
+                label="Windfall Amount"
+                value={formData.assumptions.windfallAmount}
+                onChange={v => setField("assumptions", { ...formData.assumptions, windfallAmount: v })}
+                hint="Lump sum amount"
+              />
+            </div>
+          </details>
         </div>
         <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-border">
           <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
@@ -455,6 +717,17 @@ function AlstomSTICard({ data }: { data: AlstomSTIAnalysis }) {
             ))}
           </ul>
         </div>
+
+        {/* Live Price Indicator */}
+        {data.livePrice && (
+          <div className="text-xs text-muted-foreground flex items-center gap-2 mt-2 p-2 bg-muted/30 rounded">
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            Live ALO.PA: <span className="font-semibold text-foreground">EUR {data.livePrice.price.toFixed(2)}</span>
+            · 1Y {(data.livePrice.change1y * 100).toFixed(1)}%
+            · as of {data.livePrice.asOf.slice(0, 16).replace("T", " ")} UTC
+            · src: {data.livePrice.source}
+          </div>
+        )}
 
         {/* Disclaimer */}
         <div className="text-[10px] text-muted-foreground leading-relaxed border-t border-border pt-3">

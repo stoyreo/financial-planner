@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useStore } from "@/lib/store";
 import {
   setupBackupFolder, startAutoBackup, runBackup,
@@ -9,11 +9,12 @@ import {
   getGoogleDriveClient, onSyncStatus, type SyncStatus,
   type GoogleDriveConfig,
 } from "@/lib/google-drive";
-import { CloudUpload, CheckCircle, AlertTriangle, FolderOpen, RefreshCw, LogOut, X } from "lucide-react";
+import { CloudUpload, CheckCircle, AlertTriangle, FolderOpen, RefreshCw, LogOut, X, Download, Upload } from "lucide-react";
 
 export function BackupWidget({ compact = false }: { compact?: boolean }) {
-  const { exportData } = useStore();
+  const { exportData, exportDataXlsx, importDataXlsx } = useStore();
   const [useGoogleDrive, setUseGoogleDrive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [backupStatus, setBackupStatus] = useState<BackupStatus>({
     configured: false, lastBackup: null, lastFile: null, error: null,
   });
@@ -92,6 +93,33 @@ export function BackupWidget({ compact = false }: { compact?: boolean }) {
       const client = getGoogleDriveClient();
       await client?.signOut();
     }
+  };
+
+  const handleXlsxExport = () => {
+    const blob = exportDataXlsx();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `financial101_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setSuccessMessage("XLSX exported successfully");
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 3000);
+  };
+
+  const handleXlsxImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ok = await importDataXlsx(file);
+    if (ok) {
+      setSuccessMessage("XLSX imported successfully");
+    } else {
+      setSuccessMessage("XLSX import failed — check console");
+    }
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 3000);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const status = useGoogleDrive ? syncStatus : backupStatus;
@@ -193,23 +221,42 @@ export function BackupWidget({ compact = false }: { compact?: boolean }) {
           {status.error && (
             <div className="text-xs text-amber-700 dark:text-amber-300">{status.error}</div>
           )}
-          <div className="flex gap-2">
-            <button onClick={handleBackupNow} disabled={running || status.syncing}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-accent transition-colors disabled:opacity-50">
-              <RefreshCw size={12} className={running || status.syncing ? "animate-spin" : ""} />
-              {running || status.syncing ? "Syncing…" : "Sync Now"}
-            </button>
-            {useGoogleDrive ? (
-              <button onClick={handleSignOut}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-accent transition-colors text-muted-foreground">
-                <LogOut size={12} /> Sign Out
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-2">
+              <button onClick={handleBackupNow} disabled={running || status.syncing}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-accent transition-colors disabled:opacity-50 flex-1">
+                <RefreshCw size={12} className={running || status.syncing ? "animate-spin" : ""} />
+                {running || status.syncing ? "Syncing…" : "Sync Now"}
               </button>
-            ) : (
-              <button onClick={handleSetup}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-accent transition-colors text-muted-foreground">
-                <FolderOpen size={12} /> Change Folder
+              {useGoogleDrive ? (
+                <button onClick={handleSignOut}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-accent transition-colors text-muted-foreground">
+                  <LogOut size={12} /> Sign Out
+                </button>
+              ) : (
+                <button onClick={handleSetup}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-accent transition-colors text-muted-foreground">
+                  <FolderOpen size={12} /> Change Folder
+                </button>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={handleXlsxExport}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-accent transition-colors text-muted-foreground flex-1">
+                <Download size={12} /> Export XLSX
               </button>
-            )}
+              <label className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-accent transition-colors text-muted-foreground cursor-pointer flex-1">
+                <Upload size={12} /> Import XLSX
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx"
+                  onChange={handleXlsxImport}
+                  className="hidden"
+                />
+              </label>
+            </div>
           </div>
         </>
       ) : (

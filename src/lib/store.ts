@@ -92,6 +92,8 @@ interface Store {
   saveUserNamespaceAsync: () => Promise<void>;
   exportData: () => string;
   importData: (json: string) => boolean;
+  exportDataXlsx: () => Blob;
+  importDataXlsx: (file: File) => Promise<boolean>;
 }
 
 function getActiveScenario(scenarios: Scenario[], id: string): Scenario {
@@ -423,6 +425,68 @@ export const useStore = create<Store>()(
             success = false;
           }
         });
+        return success;
+      },
+
+      exportDataXlsx: () => {
+        const XLSX = require("xlsx");
+        const s = get();
+        const wb = XLSX.utils.book_new();
+        const objToKV = (o: any) => Object.entries(o).map(([key, value]) => ({ key, value }));
+
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(objToKV(s.profile)), "profile");
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s.incomes), "incomes");
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s.expenses), "expenses");
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s.debts), "debts");
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s.investments), "investments");
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(objToKV(s.retirement)), "retirement");
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(objToKV(s.tax)), "tax");
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s.scenarios.map(sc => ({
+          id: sc.id, name: sc.name, description: sc.description, isBase: sc.isBase,
+          color: sc.color, assumptionsJSON: JSON.stringify(sc.assumptions), createdAt: sc.createdAt,
+        }))), "scenarios");
+
+        const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+        return new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      },
+
+      importDataXlsx: async (file: File) => {
+        let success = false;
+        try {
+          const XLSX = require("xlsx");
+          const buf = await file.arrayBuffer();
+          const wb = XLSX.read(buf, { type: "array" });
+          const sheet = (n: string) => wb.Sheets[n] ? XLSX.utils.sheet_to_json<any>(wb.Sheets[n]) : [];
+          const kvToObj = (rows: any[]) => rows.reduce((a, { key, value }) => ({ ...a, [key]: value }), {});
+
+          const incomes = sheet("incomes");
+          const expenses = sheet("expenses");
+          const debts = sheet("debts");
+          const investments = sheet("investments");
+          const profile = kvToObj(sheet("profile"));
+          const retirement = kvToObj(sheet("retirement"));
+          const tax = kvToObj(sheet("tax"));
+          const scenarios = sheet("scenarios").map(r => ({
+            ...r, assumptions: JSON.parse(r.assumptionsJSON || "{}"),
+          }));
+
+          set((state) => {
+            if (Object.keys(profile).length) state.profile = profile as any;
+            if (incomes.length) state.incomes = incomes as any;
+            if (expenses.length) state.expenses = expenses as any;
+            if (debts.length) state.debts = debts as any;
+            if (investments.length) state.investments = investments as any;
+            if (Object.keys(retirement).length) state.retirement = retirement as any;
+            if (Object.keys(tax).length) state.tax = tax as any;
+            if (scenarios.length) state.scenarios = scenarios as any;
+            const f = computeForecasts(state as any);
+            state.yearlyForecast = f.yearlyForecast;
+            state.monthlyForecast = f.monthlyForecast;
+          });
+          success = true;
+        } catch (e) {
+          console.error("XLSX import failed:", e);
+        }
         return success;
       },
 

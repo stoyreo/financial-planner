@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useStore, selectTotalMonthlyIncome } from "@/lib/store";
 import { thb, toMonthly, pct } from "@/lib/utils";
 import type { IncomeItem, IncomeCategory, Frequency } from "@/lib/types";
@@ -7,7 +7,7 @@ import {
   Card, CardHeader, CardTitle, CardContent, Button, Input, Label,
   Select, Switch, Textarea, Modal, Badge, StatCard, PageHeader, EmptyState, Alert
 } from "@/components/ui";
-import { Plus, Edit, Trash2, TrendingUp, DollarSign, Briefcase, PiggyBank } from "lucide-react";
+import { Plus, Edit, Trash2, TrendingUp, DollarSign, Briefcase, PiggyBank, FileUp } from "lucide-react";
 
 const CATEGORIES: IncomeCategory[] = ["salary", "bonus", "freelance", "rental", "dividend", "interest", "other"];
 const FREQUENCIES: Frequency[] = ["monthly", "yearly", "one-time"];
@@ -93,6 +93,8 @@ export default function IncomePage() {
   const [formData, setFormData] = useState<Omit<IncomeItem, "id">>(defaultItem());
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [sortField, setSortField] = useState<"amount" | "name">("amount");
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const totalMonthly = selectTotalMonthlyIncome(store);
   const totalYearly = totalMonthly * 12;
@@ -112,6 +114,48 @@ export default function IncomePage() {
   };
   const setField = (k: string, v: any) => setFormData(f => ({ ...f, [k]: v }));
 
+  const handlePayslipImport = async (file: File) => {
+    setOcrBusy(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      const res = await fetch("/api/payslip/extract", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mediaType: file.type, data: b64 }),
+      });
+      if (!res.ok) {
+        alert("OCR failed. Try a clearer image.");
+        return;
+      }
+      const x = await res.json();
+      if (!x.netAmount) {
+        alert("Could not read net pay. Please add manually.");
+        return;
+      }
+      setFormData({
+        name: x.name || `${x.employer ?? "Employer"} payroll`,
+        category: "salary",
+        owner: "Me",
+        frequency: x.isMonthly ? "monthly" : "one-time",
+        amount: x.netAmount,
+        startDate: x.periodStart || new Date().toISOString().split("T")[0],
+        endDate: undefined,
+        annualGrowthRate: 0.04,
+        isTaxable: false,                      // already net
+        notes: `Imported from payslip ${x.periodStart ?? ""}–${x.periodEnd ?? ""}. Confidence ${(x.confidence*100|0)}%. ${x.notes ?? ""}`,
+        isActive: true,
+      });
+      setEditId(null);
+      setModalOpen(true);
+    } catch (e) {
+      alert("Import error — check console.");
+      console.error(e);
+    } finally {
+      setOcrBusy(false);
+    }
+  };
+
   const filtered = incomes
     .filter(i => filterCategory === "all" || i.category === filterCategory)
     .sort((a, b) => sortField === "amount"
@@ -124,9 +168,23 @@ export default function IncomePage() {
         title="Income"
         subtitle="Manage all income sources with growth projections"
         actions={
-          <Button size="sm" onClick={openAdd}>
-            <Plus size={14} /> Add Income
-          </Button>
+          <div className="flex gap-2">
+            <label className={`inline-flex items-center gap-1.5 px-3 h-9 rounded-lg border border-border
+                             bg-card hover:bg-muted text-sm cursor-pointer ${ocrBusy ? "opacity-50 pointer-events-none" : ""}`}>
+              <FileUp size={14} />
+              {ocrBusy ? "Reading…" : "Import payslip"}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,application/pdf"
+                className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handlePayslipImport(f); e.target.value=""; }}
+              />
+            </label>
+            <Button size="sm" onClick={openAdd}>
+              <Plus size={14} /> Add Income
+            </Button>
+          </div>
         }
       />
 

@@ -151,4 +151,69 @@ All notable changes to Financial 101 Master will be documented in this file.
 - New utility functions in `debt-payoff.ts`:
   - `calculatePayoffYear()`: Core payoff calculation
   - `formatPayoffDisplay()`: User-friendly formatting
-  - `calculateMultiplePayoffs()`: Batch payoff c
+  - `calculateMultiplePayoffs()`: Batch payoff calculations
+- New AI insights module with 5 menu-specific analysis functions
+- Expert skill structure with clear function interfaces
+- Better separation of concerns (engine vs. UI)
+
+#### Bug Fixes
+
+- Fixed payoff calculation for zero-payment loans (now shows "Never")
+- Corrected monthly payment calculations in debt cards
+- Improved handling of edge cases in payoff metrics
+
+#### Performance
+
+- Debt payoff calculations are O(1) - instant computation
+- AI insights cache friendly (minimal re-renders)
+- Mortgage simulator selector doesn't impact performance
+
+#### Documentation
+
+- SKILL.md files for both expert advisors
+- Clear function signatures and parameter descriptions
+- Example queries for each skill
+- Category tags for skill discovery
+
+### Version Information
+
+- **Version:** 3.0.0
+- **Build Date:** 2026-04-15
+- **Node.js:** ^14.0.0
+- **Next.js:** 14.2.29
+- **React:** ^18
+
+### Migration Notes
+
+No breaking changes from V2.x. All existing features remain functional and unchanged.
+
+### Files Added
+
+```
+src/lib/engine/debt-payoff.ts
+src/lib/ai-insights.ts
+src/skills/life-retirement-planner/SKILL.md
+src/skills/life-retirement-planner/functions.ts
+src/skills/investment-expert/SKILL.md
+src/skills/investment-expert/functions.ts
+START V3.bat
+```
+
+### Files Modified
+
+```
+src/app/debts/page.tsx (added checkbox selection + payoff year)
+package.json (version bump to 3.0.0)
+```
+
+---
+
+## [2.0.0] - Previous Release
+
+Refer to RELEASE_NOTES.md for Phase 2 features.
+
+---
+
+## Support
+
+For issues or feature requests, please create an issue in the project repository.

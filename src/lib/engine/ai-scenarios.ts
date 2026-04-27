@@ -566,6 +566,8 @@ export interface AlstomSTICriterion {
   commentary: string;
 }
 
+export type AlstomQuote = { price: number; change1y: number; asOf: string; source: string };
+
 export interface AlstomSTIAnalysis {
   moduleId: "alstom-sti-fy2526";
   moduleName: string;
@@ -574,6 +576,8 @@ export interface AlstomSTIAnalysis {
   payoutProbability: number;
   /** Expected payout expressed as % of target STI (100 = on-target) */
   expectedPayoutRatio: number;
+  /** Blended payout factor (same as expectedPayoutRatio / 100) */
+  expectedPayoutPct?: number;
   confidenceScore: number;
   timestamp: string;
   criteria: AlstomSTICriterion[];
@@ -581,6 +585,7 @@ export interface AlstomSTIAnalysis {
   narrative: string;
   sources: { label: string; url: string }[];
   disclaimer: string;
+  livePrice?: AlstomQuote;
 }
 
 export function analyzeAlstomSTI(): AlstomSTIAnalysis {
@@ -716,5 +721,43 @@ export function analyzeAlstomSTI(): AlstomSTIAnalysis {
     ],
     disclaimer:
       "Estimate based on the 40/30/20/10 weighting assumption (aEBIT / FCF / Orders / Sales) commonly applied to Alstom's Group STI framework. Your individual plan may use different weights, a different aEBIT threshold, an ESG/CO2 modifier, or personal-objective components. Final audited FY 2025/26 results and any Remuneration Committee discretion may shift the outcome. Consult your HR-provided STI letter for your personal weighting and targets.",
+  };
+}
+
+/**
+ * Analyze Alstom STI with live share price momentum as a 5th criterion.
+ * Re-normalizes weights: 4 original criteria scaled to 90%, new criterion at 10%.
+ */
+export function analyzeAlstomSTIWithLive(quote: AlstomQuote | null): AlstomSTIAnalysis {
+  const base = analyzeAlstomSTI();              // existing synchronous fn
+  if (!quote) return base;                      // graceful degrade
+
+  const sharePriceCriterion: AlstomSTICriterion = {
+    id: "share_price_momentum",
+    name: "Share price 1Y momentum (live)",
+    weight: 0.10,
+    targetLabel: ">= +10% / yr",
+    actualLabel: `${(quote.change1y * 100).toFixed(1)}% (price EUR ${quote.price.toFixed(2)})`,
+    achievement: quote.change1y / 0.10,
+    payoutFactor: Math.max(0, Math.min(1.5, quote.change1y / 0.10)),
+    status: quote.change1y >= 0.10 ? "exceeded" : quote.change1y >= 0 ? "met" : "missed",
+    commentary:
+      `Live Alstom (ALO.PA) at EUR ${quote.price.toFixed(2)} as of ${quote.asOf.slice(0,10)}. ` +
+      `1Y momentum ${(quote.change1y*100).toFixed(1)}%. STI plans increasingly weight TSR/share-price as a ` +
+      `gate; we proxy with a 10% notional weight here. Source: ${quote.source}.`,
+  };
+
+  const rescaled = base.criteria.map(c => ({ ...c, weight: c.weight * 0.9 }));
+  const allCriteria = [...rescaled, sharePriceCriterion];
+
+  const blendedPayout = allCriteria.reduce((s, c) => s + c.weight * c.payoutFactor, 0);
+  const expectedPayoutRatio = Math.round(blendedPayout * 100);
+
+  return {
+    ...base,
+    criteria: allCriteria,
+    expectedPayoutRatio,
+    expectedPayoutPct: blendedPayout,
+    livePrice: quote,
   };
 }

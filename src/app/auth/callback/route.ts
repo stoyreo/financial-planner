@@ -1,14 +1,33 @@
 import { NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 
-/**
- * NOTE: This callback route is deprecated. Password-based authentication
- * no longer uses OAuth callbacks. This endpoint redirects to login.
- *
- * Magic link authentication has been disabled in favor of email+password.
- */
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
-  const { origin } = new URL(request.url);
+  const { searchParams, origin } = new URL(request.url);
+  const code = searchParams.get("code");
+  const next = searchParams.get("next") ?? "/";
 
-  console.log("[auth/callback] Deprecated endpoint accessed - redirecting to login");
-  return NextResponse.redirect(`${origin}/login`);
+  if (code) {
+    const cookieStore = cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get: (n) => cookieStore.get(n)?.value,
+          set: (n, v, o) => cookieStore.set({ name: n, value: v, ...o }),
+          remove: (n, o) => cookieStore.set({ name: n, value: "", ...o }),
+        },
+      },
+    );
+
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error) {
+      return NextResponse.redirect(`${origin}${next}`);
+    }
+  }
+
+  return NextResponse.redirect(`${origin}/login?error=oauth_failed`);
 }

@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { getSession, clearSession } from "@/lib/auth";
+import { getSession, clearSession, ensureAppUserFromSupabase, synthesizeSession } from "@/lib/auth";
 import { useStore } from "@/lib/store";
+import { getSupabaseBrowser } from "@/lib/supabase/client";
 
 const PUBLIC_PATHS = ["/login", "/login/"];
 
@@ -18,8 +19,25 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
     const session = getSession();
     if (!session) {
-      clearSession();
-      router.replace("/login");
+      // Check for Supabase session (OAuth callback)
+      (async () => {
+        try {
+          const supabase = getSupabaseBrowser();
+          const { data: { session: sbSession } } = await supabase.auth.getSession();
+          if (sbSession?.user?.email) {
+            const appUser = await ensureAppUserFromSupabase(sbSession.user.email, sbSession.user.id);
+            if (appUser) {
+              synthesizeSession(appUser);
+              loadUserNamespace();
+              setAuthed(true);
+              return;
+            }
+          }
+        } catch { /* non-fatal */ }
+
+        clearSession();
+        router.replace("/login");
+      })();
       return;
     }
     loadUserNamespace();

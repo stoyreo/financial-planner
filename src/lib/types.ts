@@ -154,6 +154,13 @@ export interface ScenarioAssumptions {
   mortgageRateChange?: number;    // applied from given year
   mortgageRateChangeYear?: number;
   oneTimeExpenses?: { year: number; amount: number; description: string }[];
+  // New fields for Feature 2
+  expenseInflationOverride?: number;     // default = inflationRate
+  salaryRaiseYear?: number;              // year of one-time pay bump
+  salaryRaiseFactor?: number;            // e.g. 1.15 = +15%
+  investmentVolatility?: number;         // sigma for ± band, default 0.12
+  windfallYear?: number;                 // lump cash inflow year
+  windfallAmount?: number;
 }
 
 export interface Scenario {
