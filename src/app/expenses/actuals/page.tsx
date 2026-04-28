@@ -20,7 +20,7 @@ import {
 import { thb } from "@/lib/utils";
 import {
   Card, CardHeader, CardTitle, CardContent, Button, Badge,
-  StatCard, PageHeader, EmptyState, Progress, Select, Input, Modal,
+  StatCard, PageHeader, EmptyState, Progress, Select, Input,
 } from "@/components/ui";
 import {
   Upload, AlertTriangle, TrendingDown, Sparkles, FileText, Trash2,
@@ -70,9 +70,6 @@ export default function ActualsPage() {
   }, [allMonths, selectedMonth]);
 
   const [filterCat, setFilterCat] = useState<string>("all");
-  const [aiOpen, setAiOpen] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiResult, setAiResult] = useState<any>(null);
   const [savingsTarget, setSavingsTarget] = useState<number>(20000);
 
   // ── Derived data ─────────────────────────────────────
@@ -153,40 +150,6 @@ export default function ActualsPage() {
     }
   }
 
-  async function runAiSuggestions() {
-    if (!selectedMonth) return;
-    setAiOpen(true);
-    setAiLoading(true);
-    setAiResult(null);
-    try {
-      const res = await fetch("/api/expenses/suggest-cuts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          monthlyIncome,
-          monthlySavingsTarget: savingsTarget,
-          currentMonthlySavings: Math.max(0, monthlyIncome - monthTotal),
-          billingMonth: selectedMonth,
-          rows: rows.map(r => ({
-            category: r.category,
-            budget: r.budget,
-            actual: r.actual,
-            gap: r.gap,
-            isEssential: r.isEssential,
-          })),
-          topMerchants,
-          recentMonths: trend.map(t => ({ ym: t.ym, total: t.total })),
-        }),
-      });
-      const json = await res.json();
-      setAiResult(json);
-    } catch (e: any) {
-      setAiResult({ error: e.message ?? "AI request failed" });
-    } finally {
-      setAiLoading(false);
-    }
-  }
-
   // ── Empty state: no imports yet ──────────────────────
   if (transactions.length === 0) {
     return (
@@ -242,9 +205,9 @@ export default function ActualsPage() {
             <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
               <Upload size={14} /> {uploading ? "Extracting…" : "Import Statement"}
             </Button>
-            <Button size="sm" onClick={runAiSuggestions} disabled={!selectedMonth}>
-              <Sparkles size={14} /> Live AI Cuts
-            </Button>
+            <Link href="/expenses/savings">
+              <Button size="sm"><Sparkles size={14} /> Savings Optimizer</Button>
+            </Link>
           </div>
         }
       />
@@ -306,35 +269,28 @@ export default function ActualsPage() {
           monthlyIncome={monthlyIncome}
           initialTarget={savingsTarget}
           onApply={(newBudgets) => {
-            // Push simulated category totals back to ExpenseItem budgets.
-            // Strategy: prorate the new category total across the existing
-            // active expense items in that category by their current weight,
-            // and write into ExpenseItem.budgetAmount so the budget vs actual
-            // recompute reflects the optimized plan.
             for (const cat of Object.keys(newBudgets)) {
               const newTotal = newBudgets[cat];
               const items = expenses.filter(e => e.isActive && e.category === cat);
               if (items.length === 0) continue;
               const currentMonthlyTotal = items.reduce(
-                (s, e) => s + toMonthly(e.budgetAmount ?? e.amount, e.frequency), 0
+                (s, e) => s + toMonthly(e.amount, e.frequency), 0
               );
               if (currentMonthlyTotal === 0) {
-                // Spread evenly if there's no current weight signal
                 const each = newTotal / items.length;
                 for (const it of items) {
                   const newMonthly = each;
-                  // Convert back into the item's frequency unit
                   const inUnit = it.frequency === "yearly"
                     ? newMonthly * 12
                     : it.frequency === "one-time"
                       ? it.amount
                       : newMonthly;
-                  updateExpense(it.id, { budgetAmount: Math.round(inUnit) });
+                  updateExpense(it.id, { amount: Math.round(inUnit) });
                 }
                 continue;
               }
               for (const it of items) {
-                const itMonthly = toMonthly(it.budgetAmount ?? it.amount, it.frequency);
+                const itMonthly = toMonthly(it.amount, it.frequency);
                 const share = itMonthly / currentMonthlyTotal;
                 const newMonthly = newTotal * share;
                 const inUnit = it.frequency === "yearly"
@@ -342,7 +298,7 @@ export default function ActualsPage() {
                   : it.frequency === "one-time"
                     ? it.amount
                     : newMonthly;
-                updateExpense(it.id, { budgetAmount: Math.round(inUnit) });
+                updateExpense(it.id, { amount: Math.round(inUnit) });
               }
             }
             setImportMsg("Optimized plan applied to budget. See /expenses for the new budget amounts.");
@@ -529,80 +485,6 @@ export default function ActualsPage() {
         </CardContent>
       </Card>
 
-      {/* AI Cuts modal */}
-      <Modal open={aiOpen} onClose={() => setAiOpen(false)} title="Live AI Savings Cuts" className="max-w-2xl">
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <label className="text-sm">Monthly savings target (THB):</label>
-            <Input
-              type="number"
-              value={savingsTarget}
-              onChange={e => setSavingsTarget(Number(e.target.value))}
-              className="w-32 h-8"
-            />
-            <Button size="sm" onClick={runAiSuggestions} disabled={aiLoading}>
-              <Sparkles size={12} /> {aiLoading ? "Thinking…" : "Re-run"}
-            </Button>
-          </div>
-
-          {aiLoading && (
-            <div className="text-sm text-muted-foreground py-6 text-center">
-              Asking Claude to rank cuts by impact and protect essentials…
-            </div>
-          )}
-
-          {aiResult && !aiResult.error && (
-            <div className="space-y-3">
-              <div className="p-3 rounded-md bg-muted/50 text-sm">{aiResult.summary}</div>
-              {aiResult.savingsGap > 0 && (
-                <div className="text-xs text-amber-500">
-                  Gap to target: {thb(aiResult.savingsGap)}/mo
-                </div>
-              )}
-              <div className="space-y-2">
-                {(aiResult.suggestions ?? []).map((s: any, i: number) => (
-                  <div key={i} className="border border-border rounded-md p-3">
-                    <div className="flex items-start justify-between mb-1">
-                      <div>
-                        <span className="font-semibold">{s.category}</span>
-                        {s.isEssential && <Badge variant="outline" className="ml-2 text-xs">Essential</Badge>}
-                        <Badge
-                          className={`ml-2 text-xs ${
-                            s.priority === "high" ? "bg-red-500/15 text-red-500"
-                            : s.priority === "medium" ? "bg-amber-500/15 text-amber-500"
-                            : "bg-blue-500/15 text-blue-500"
-                          }`}
-                        >
-                          {s.priority}
-                        </Badge>
-                      </div>
-                      <div className="text-right tabular-nums">
-                        <div className="text-emerald-500 font-bold">−{thb(s.suggestedReduction)}/mo</div>
-                        <div className="text-xs text-muted-foreground">from {thb(s.currentMonthly)}</div>
-                      </div>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-2">{s.reason}</p>
-                    {s.exampleActions?.length > 0 && (
-                      <ul className="text-xs space-y-1">
-                        {s.exampleActions.map((a: string, j: number) => (
-                          <li key={j} className="flex gap-1.5">
-                            <ChevronRight size={12} className="mt-0.5 shrink-0 text-muted-foreground" />
-                            <span>{a}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {aiResult?.error && (
-            <div className="text-sm text-red-500">Error: {aiResult.error}</div>
-          )}
-        </div>
-      </Modal>
     </div>
   );
 }

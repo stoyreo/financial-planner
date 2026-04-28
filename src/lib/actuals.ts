@@ -80,7 +80,7 @@ export function budgetVsActual(
 
   const budgetByCat: Record<string, { amount: number; essential: boolean; ids: string[] }> = {};
   for (const e of expenses.filter(e => e.isActive)) {
-    const monthly = toMonthly(e.budgetAmount ?? e.amount, e.frequency);
+    const monthly = toMonthly(e.amount, e.frequency);
     if (!budgetByCat[e.category]) budgetByCat[e.category] = { amount: 0, essential: false, ids: [] };
     budgetByCat[e.category].amount += monthly;
     budgetByCat[e.category].essential = budgetByCat[e.category].essential || e.isEssential;

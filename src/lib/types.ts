@@ -59,6 +59,7 @@ export interface ExpenseItem {
   isEssential: boolean;
   notes: string;
   isActive: boolean;
+  /** @deprecated as of 2026-04-28 — `amount` is now the canonical budget. Field kept for backward compat with persisted JSON; do not write to it. */
   budgetAmount?: number;         // for budget vs actual
 }
 

@@ -8,7 +8,7 @@ import {
   Card, CardHeader, CardTitle, CardContent, Button, Input, Label,
   Select, Switch, Textarea, Modal, Badge, StatCard, PageHeader, EmptyState, Progress
 } from "@/components/ui";
-import { Plus, Edit, Trash2, ShoppingCart, Filter, Upload } from "lucide-react";
+import { Plus, Edit, Trash2, ShoppingCart, Filter, Upload, Sparkles } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
 const EXPENSE_CATEGORIES = ["Utilities","Food","Transport","Insurance","Housing","Entertainment","Shopping","Travel","Family","Pet","Health","Investment","Medical","Other"];
@@ -41,7 +41,7 @@ function ExpenseForm({ item, onChange }: { item: Omit<ExpenseItem, "id">; onChan
         <Input value={item.owner} onChange={e => onChange("owner", e.target.value)} className="mt-1" />
       </div>
       <div>
-        <Label>Amount (฿)</Label>
+        <Label>Budget Amount (฿)</Label>
         <Input type="number" value={item.amount} onChange={e => onChange("amount", Number(e.target.value))} className="mt-1" />
       </div>
       <div>
@@ -66,10 +66,6 @@ function ExpenseForm({ item, onChange }: { item: Omit<ExpenseItem, "id">; onChan
             onChange={e => onChange("inflationRate", Number(e.target.value) / 100)} />
           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
         </div>
-      </div>
-      <div>
-        <Label>Budget Amount (฿) – optional</Label>
-        <Input type="number" value={item.budgetAmount ?? ""} onChange={e => onChange("budgetAmount", e.target.value ? Number(e.target.value) : undefined)} className="mt-1" />
       </div>
       <div className="flex items-center gap-3 mt-2">
         <Label>Essential</Label>
@@ -132,9 +128,12 @@ export default function ExpensesPage() {
     <div className="p-6 max-w-5xl mx-auto">
       <PageHeader
         title="Expenses"
-        subtitle="Track monthly, yearly, and one-time expenses with inflation"
+        subtitle="Plan your monthly, yearly, and one-time budget with inflation"
         actions={
           <div className="flex gap-2">
+            <Link href="/expenses/savings">
+              <Button variant="outline" size="sm"><Sparkles size={14} /> Savings Optimizer</Button>
+            </Link>
             <Link href="/expenses/actuals">
               <Button variant="outline" size="sm"><Upload size={14} /> Import Statement / Actuals</Button>
             </Link>
@@ -145,10 +144,10 @@ export default function ExpensesPage() {
 
       {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <StatCard title="Total Monthly" value={thb(totalMonthly)} icon={ShoppingCart} color="red" />
-        <StatCard title="Annual Run Rate" value={thb(totalMonthly * 12)} icon={ShoppingCart} color="amber" />
-        <StatCard title="Essential" value={thb(essentialMonthly)} subtitle={pct(essentialMonthly / (totalMonthly || 1))} icon={ShoppingCart} color="blue" />
-        <StatCard title="Discretionary" value={thb(discretionaryMonthly)} subtitle={pct(discretionaryMonthly / (totalMonthly || 1))} icon={ShoppingCart} color="purple" />
+        <StatCard title="Total Monthly Budget" value={thb(totalMonthly)} icon={ShoppingCart} color="red" />
+        <StatCard title="Annual Budget"        value={thb(totalMonthly * 12)} icon={ShoppingCart} color="amber" />
+        <StatCard title="Essential Budget"     value={thb(essentialMonthly)} subtitle={pct(essentialMonthly / (totalMonthly || 1))} icon={ShoppingCart} color="blue" />
+        <StatCard title="Discretionary Budget" value={thb(discretionaryMonthly)} subtitle={pct(discretionaryMonthly / (totalMonthly || 1))} icon={ShoppingCart} color="purple" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
@@ -241,7 +240,7 @@ export default function ExpensesPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/50">
-                  {["Name", "Category", "Amount", "Monthly", "Inflation", "Essential", "Status", ""].map(h => (
+                  {["Name", "Category", "Budget", "Monthly Budget", "Inflation", "Essential", "Status", ""].map(h => (
                     <th key={h} className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">{h}</th>
                   ))}
                 </tr>
@@ -249,7 +248,6 @@ export default function ExpensesPage() {
               <tbody>
                 {filtered.map(item => {
                   const monthly = toMonthly(item.amount, item.frequency);
-                  const overBudget = item.budgetAmount && item.amount > item.budgetAmount;
                   return (
                     <tr key={item.id} className="border-b border-border hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-3">
@@ -259,7 +257,6 @@ export default function ExpensesPage() {
                       <td className="px-4 py-3"><Badge variant="outline">{item.category}</Badge></td>
                       <td className="px-4 py-3">
                         <div className="tabular-nums font-medium">{thb(item.amount)}</div>
-                        {overBudget && <div className="text-xs text-red-500">↑ over budget</div>}
                       </td>
                       <td className="px-4 py-3 tabular-nums">{thb(monthly)}</td>
                       <td className="px-4 py-3 tabular-nums text-muted-foreground">{pct(item.inflationRate)}/yr</td>

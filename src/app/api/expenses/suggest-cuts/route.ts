@@ -91,7 +91,15 @@ ${recentMonths.map((m: any) => `- ${m.ym}: ฿${Math.round(m.total).toLocaleStri
 Return JSON exactly matching this schema:
 ${SCHEMA}`;
 
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "ai_unavailable", reason: "no_api_key", message: "ANTHROPIC_API_KEY is not configured. Use Local Scan instead." },
+        { status: 503 },
+      );
+    }
+
+    const client = new Anthropic({ apiKey });
     const msg = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 1500,
@@ -108,12 +116,40 @@ ${SCHEMA}`;
     let parsed: any;
     try { parsed = JSON.parse(jsonStr); }
     catch {
-      return NextResponse.json({ error: "parse_failed", raw: text }, { status: 502 });
+      return NextResponse.json(
+        { error: "parse_failed", reason: "model_did_not_return_valid_json", raw: text, message: "AI returned an unparseable response. Try Local Scan." },
+        { status: 502 },
+      );
     }
 
-    return NextResponse.json(parsed);
+    return NextResponse.json({ ...parsed, source: "ai" });
   } catch (e: any) {
     console.error("suggest-cuts error:", e);
-    return NextResponse.json({ error: e?.message ?? "failed" }, { status: 500 });
+    const raw = String(e?.message ?? "");
+    // Anthropic credit / billing exhaustion → 402
+    if (/credit balance is too low/i.test(raw) || /insufficient_quota/i.test(raw)) {
+      return NextResponse.json(
+        { error: "ai_unavailable", reason: "insufficient_credits", message: "Anthropic credits exhausted. Use Local Scan instead." },
+        { status: 402 },
+      );
+    }
+    // Auth issues → 401
+    if (/invalid x-api-key|authentication/i.test(raw)) {
+      return NextResponse.json(
+        { error: "ai_unavailable", reason: "auth_failed", message: "Anthropic auth failed. Use Local Scan instead." },
+        { status: 401 },
+      );
+    }
+    // Rate limit → 429
+    if (/rate limit|429/i.test(raw)) {
+      return NextResponse.json(
+        { error: "ai_unavailable", reason: "rate_limited", message: "Anthropic rate-limited. Try again or use Local Scan." },
+        { status: 429 },
+      );
+    }
+    return NextResponse.json(
+      { error: "ai_unavailable", reason: "unknown", message: raw || "AI request failed. Use Local Scan instead." },
+      { status: 500 },
+    );
   }
 }
