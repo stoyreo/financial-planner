@@ -491,17 +491,3 @@ export default function ActualsPage() {
     </div>
   );
 }
-                    title="Clear month's transactions (re-import to refresh)"
-                  >
-                    <Trash2 size={11} className="text-destructive" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-    </div>
-  );
-}
