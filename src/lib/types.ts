@@ -259,3 +259,55 @@ export interface AppState {
   yearlyForecast: YearlyForecastRow[];
   monthlyForecast: MonthlyForecastRow[];
 }
+
+
+// ── Actuals: imported transactions from credit card statements ─────
+export interface Transaction {
+  id: string;
+  postDate: string;
+  transDate: string;
+  billingMonth: string;
+  description: string;
+  merchantKey: string;
+  amount: number;
+  currency: Currency;
+  fxAmount?: number;
+  fxCurrency?: string;
+  category: string;
+  matchedExpenseId?: string;
+  source: "uob" | "kbank" | "scb" | "kept" | "tmb" | "manual" | "other";
+  cardLast4?: string;
+  statementImportId?: string;
+  confidence: number;
+  isCredit: boolean;
+  notes?: string;
+  dedupeKey: string;
+}
+
+export interface MerchantRule {
+  id: string;
+  pattern: string;
+  category: string;
+  isEssential?: boolean;
+  createdAt: string;
+  source: "default" | "user" | "ai";
+  hits: number;
+}
+
+export interface StatementImport {
+  id: string;
+  fileName: string;
+  importedAt: string;
+  bank: string;
+  statementDate: string;
+  billingMonth: string;
+  periodStart: string;
+  periodEnd: string;
+  totalCharges: number;
+  totalCredits: number;
+  transactionCount: number;
+  duplicatesSkipped: number;
+  cardholderName?: string;
+  fileHash?: string;
+  notes?: string;
+}

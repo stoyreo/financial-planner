@@ -117,15 +117,30 @@ export default function IncomePage() {
   const handlePayslipImport = async (file: File) => {
     setOcrBusy(true);
     try {
-      const buf = await file.arrayBuffer();
-      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      // Safe base64 for files of any size — chunk to stay under the JS arg-count limit.
+      // The previous `btoa(String.fromCharCode(...new Uint8Array(buf)))` blew up with
+      // RangeError ("Maximum call stack size exceeded") on anything larger than ~100KB,
+      // which is most real payslip PDFs and phone photos.
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      let bin = "";
+      const CHUNK = 0x8000; // 32 KB
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        bin += String.fromCharCode.apply(
+          null,
+          bytes.subarray(i, i + CHUNK) as unknown as number[]
+        );
+      }
+      const b64 = btoa(bin);
+
       const res = await fetch("/api/payslip/extract", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ mediaType: file.type, data: b64 }),
       });
       if (!res.ok) {
-        alert("OCR failed. Try a clearer image.");
+        const detail = await res.text().catch(() => "");
+        console.error("payslip extract HTTP", res.status, detail);
+        alert(`OCR failed (${res.status}). Try a clearer image.`);
         return;
       }
       const x = await res.json();
@@ -149,8 +164,8 @@ export default function IncomePage() {
       setEditId(null);
       setModalOpen(true);
     } catch (e) {
-      alert("Import error — check console.");
-      console.error(e);
+      console.error("payslip import error:", e);
+      alert(`Import error: ${(e as Error)?.message ?? e}`);
     } finally {
       setOcrBusy(false);
     }

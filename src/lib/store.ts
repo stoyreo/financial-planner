@@ -13,11 +13,13 @@ import type {
   Profile, IncomeItem, ExpenseItem, DebtAccount,
   InvestmentAccount, RetirementAssumptions, TaxAssumptions, Scenario,
   YearlyForecastRow, MonthlyForecastRow,
+  Transaction, MerchantRule, StatementImport,
 } from "./types";
 import {
   seedProfile, seedIncomes, seedExpenses, seedDebts,
   seedInvestments, seedRetirement, seedTax, seedScenarios,
 } from "./seed";
+import { buildDefaultMerchantRules, newMerchantRule } from "./categorize";
 import { loadUserData, persistUserData, saveRemoteUserData, loadRemoteUserData } from "./users";
 import { getCurrentAccount } from "./accounts";
 import { getSession } from "./auth";
@@ -35,6 +37,12 @@ interface Store {
   scenarios: Scenario[];
   activeScenarioId: string;
   isSeedLoaded: boolean;
+
+  // ── Actuals (imported credit-card statements) ─────────
+  // Kept FOREVER for month-vs-month evolution & trend analysis.
+  transactions: Transaction[];
+  merchantRules: MerchantRule[];
+  statementImports: StatementImport[];
 
   // ── Computed / cached ─────────────────────────────────
   yearlyForecast: YearlyForecastRow[];
@@ -72,6 +80,18 @@ interface Store {
   updateScenario: (id: string, s: Partial<Scenario>) => void;
   deleteScenario: (id: string) => void;
   setActiveScenario: (id: string) => void;
+
+  // ── Actuals actions ───────────────────────────────────
+  importStatement: (
+    statement: Omit<StatementImport, "id" | "importedAt" | "transactionCount" | "duplicatesSkipped">,
+    txns: Transaction[]
+  ) => { added: number; duplicates: number; statementImportId: string };
+  recategorizeTransaction: (txnId: string, newCategory: string, learnRule?: boolean) => void;
+  deleteTransaction: (txnId: string) => void;
+  clearMonthTransactions: (billingMonth: string) => void;
+  addMerchantRule: (pattern: string, category: string, isEssential?: boolean) => void;
+  removeMerchantRule: (ruleId: string) => void;
+  reapplyRules: () => void;
 
   // ── Forecast ──────────────────────────────────────────
   recomputeForecast: () => void;
@@ -131,6 +151,9 @@ export const useStore = create<Store>()(
       scenarios: seedScenarios,
       activeScenarioId: "base",
       isSeedLoaded: true,
+      transactions: [],
+      merchantRules: buildDefaultMerchantRules(),
+      statementImports: [],
       yearlyForecast: [],
       monthlyForecast: [],
       localSyncStatus: "idle",
@@ -270,6 +293,109 @@ export const useStore = create<Store>()(
         state.monthlyForecast = f.monthlyForecast;
       }),
 
+      // ── Actuals ───────────────────────────────────────
+      importStatement: (statement, txns) => {
+        const id = uuid();
+        let added = 0;
+        let duplicates = 0;
+        set((state) => {
+          const existing = new Set(state.transactions.map((t: Transaction) => t.dedupeKey));
+          const rules = state.merchantRules as MerchantRule[];
+          for (const t of txns) {
+            if (existing.has(t.dedupeKey)) { duplicates++; continue; }
+            const upper = t.merchantKey.toUpperCase();
+            let bestRule: MerchantRule | null = null;
+            for (const r of rules) {
+              if (upper.includes(r.pattern.toUpperCase())) {
+                if (!bestRule || r.pattern.length > bestRule.pattern.length) bestRule = r;
+              }
+            }
+            const finalCat = bestRule ? bestRule.category : t.category;
+            if (bestRule) bestRule.hits = (bestRule.hits ?? 0) + 1;
+            state.transactions.push({
+              ...t,
+              category: finalCat,
+              statementImportId: id,
+              confidence: bestRule ? 1 : t.confidence,
+            });
+            existing.add(t.dedupeKey);
+            added++;
+          }
+          state.statementImports.push({
+            ...statement,
+            id,
+            importedAt: new Date().toISOString(),
+            transactionCount: added,
+            duplicatesSkipped: duplicates,
+          });
+          state.transactions.sort((a: Transaction, b: Transaction) =>
+            (b.postDate || "").localeCompare(a.postDate || "")
+          );
+        });
+        return { added, duplicates, statementImportId: id };
+      },
+
+      recategorizeTransaction: (txnId, newCategory, learnRule = true) => set((state) => {
+        const idx = state.transactions.findIndex((t: Transaction) => t.id === txnId);
+        if (idx < 0) return;
+        const txn = state.transactions[idx];
+        txn.category = newCategory;
+        txn.confidence = 1;
+        if (learnRule && txn.merchantKey) {
+          const pattern = txn.merchantKey.slice(0, 24).trim();
+          const existing = state.merchantRules.find((r: MerchantRule) => r.pattern === pattern);
+          if (existing) {
+            existing.category = newCategory;
+            existing.source = "user";
+          } else {
+            state.merchantRules.push(newMerchantRule(pattern, newCategory, "user"));
+          }
+        }
+      }),
+
+      deleteTransaction: (txnId) => set((state) => {
+        state.transactions = state.transactions.filter((t: Transaction) => t.id !== txnId);
+      }),
+
+      clearMonthTransactions: (billingMonth) => set((state) => {
+        state.transactions = state.transactions.filter(
+          (t: Transaction) => t.billingMonth !== billingMonth
+        );
+      }),
+
+      addMerchantRule: (pattern, category, isEssential) => set((state) => {
+        const p = pattern.toUpperCase().trim();
+        const existing = state.merchantRules.find((r: MerchantRule) => r.pattern === p);
+        if (existing) {
+          existing.category = category;
+          existing.isEssential = isEssential;
+          existing.source = "user";
+        } else {
+          state.merchantRules.push(newMerchantRule(p, category, "user", isEssential));
+        }
+      }),
+
+      removeMerchantRule: (ruleId) => set((state) => {
+        state.merchantRules = state.merchantRules.filter((r: MerchantRule) => r.id !== ruleId);
+      }),
+
+      reapplyRules: () => set((state) => {
+        const rules = state.merchantRules as MerchantRule[];
+        for (const t of state.transactions as Transaction[]) {
+          const upper = t.merchantKey.toUpperCase();
+          let best: MerchantRule | null = null;
+          for (const r of rules) {
+            if (upper.includes(r.pattern.toUpperCase())) {
+              if (!best || r.pattern.length > best.pattern.length) best = r;
+            }
+          }
+          if (best) {
+            t.category = best.category;
+            t.confidence = 1;
+          }
+        }
+      }),
+
       // ── Forecast ─────────────────────────────────────
       recomputeForecast: () => set((state) => {
         const f = computeForecasts(state as any);
@@ -313,6 +439,9 @@ export const useStore = create<Store>()(
           if (data.tax) state.tax = data.tax;
           if (data.scenarios) state.scenarios = data.scenarios;
           if (data.activeScenarioId) state.activeScenarioId = data.activeScenarioId;
+          if (data.transactions) state.transactions = data.transactions;
+          if (data.merchantRules) state.merchantRules = data.merchantRules;
+          if (data.statementImports) state.statementImports = data.statementImports;
           const f = computeForecasts(state as any);
           state.yearlyForecast = f.yearlyForecast;
           state.monthlyForecast = f.monthlyForecast;
@@ -328,6 +457,8 @@ export const useStore = create<Store>()(
           profile: s.profile, incomes: s.incomes, expenses: s.expenses,
           debts: s.debts, investments: s.investments, retirement: s.retirement,
           tax: s.tax, scenarios: s.scenarios, activeScenarioId: s.activeScenarioId,
+          transactions: s.transactions, merchantRules: s.merchantRules,
+          statementImports: s.statementImports,
         });
       },
       saveUserNamespaceAsync: async () => {
@@ -338,6 +469,8 @@ export const useStore = create<Store>()(
           profile: s.profile, incomes: s.incomes, expenses: s.expenses,
           debts: s.debts, investments: s.investments, retirement: s.retirement,
           tax: s.tax, scenarios: s.scenarios, activeScenarioId: s.activeScenarioId,
+          transactions: s.transactions, merchantRules: s.merchantRules,
+          statementImports: s.statementImports,
         };
 
         // ── LOCAL ──
@@ -391,6 +524,10 @@ export const useStore = create<Store>()(
         state.scenarios = seedScenarios;
         state.activeScenarioId = "base";
         state.isSeedLoaded = true;
+        // NB: keep historical transactions/imports — never reset by seed reload.
+        if (!state.merchantRules || state.merchantRules.length === 0) {
+          state.merchantRules = buildDefaultMerchantRules();
+        }
         const f = computeForecasts(state as any);
         state.yearlyForecast = f.yearlyForecast;
         state.monthlyForecast = f.monthlyForecast;
@@ -401,6 +538,8 @@ export const useStore = create<Store>()(
           profile: s.profile, incomes: s.incomes, expenses: s.expenses,
           debts: s.debts, investments: s.investments, retirement: s.retirement,
           tax: s.tax, scenarios: s.scenarios,
+          transactions: s.transactions, merchantRules: s.merchantRules,
+          statementImports: s.statementImports,
         }, null, 2);
       },
       importData: (json) => {
@@ -416,6 +555,9 @@ export const useStore = create<Store>()(
             if (data.retirement) state.retirement = data.retirement;
             if (data.tax) state.tax = data.tax;
             if (data.scenarios) state.scenarios = data.scenarios;
+            if (data.transactions) state.transactions = data.transactions;
+            if (data.merchantRules) state.merchantRules = data.merchantRules;
+            if (data.statementImports) state.statementImports = data.statementImports;
             const f = computeForecasts(state as any);
             state.yearlyForecast = f.yearlyForecast;
             state.monthlyForecast = f.monthlyForecast;
@@ -531,6 +673,9 @@ export const useStore = create<Store>()(
         scenarios: state.scenarios,
         activeScenarioId: state.activeScenarioId,
         isSeedLoaded: state.isSeedLoaded,
+        transactions: state.transactions,
+        merchantRules: state.merchantRules,
+        statementImports: state.statementImports,
         // Exclude sync status from persisted state
         // (localSyncStatus, remoteSyncStatus, lastLocalSaveTime, lastRemoteSaveTime, lastSyncError)
       }),

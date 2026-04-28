@@ -222,6 +222,9 @@ export function getEmptySnapshot(displayName: string = "") {
     tax: seedTax,
     scenarios: seedScenarios,
     activeScenarioId: "base",
+    transactions: [],
+    merchantRules: [],
+    statementImports: [],
   };
 }
 

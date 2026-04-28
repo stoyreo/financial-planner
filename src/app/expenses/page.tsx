@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { useStore, selectTotalMonthlyExpenses } from "@/lib/store";
 import { thb, toMonthly, pct } from "@/lib/utils";
 import type { ExpenseItem, Frequency } from "@/lib/types";
@@ -7,7 +8,7 @@ import {
   Card, CardHeader, CardTitle, CardContent, Button, Input, Label,
   Select, Switch, Textarea, Modal, Badge, StatCard, PageHeader, EmptyState, Progress
 } from "@/components/ui";
-import { Plus, Edit, Trash2, ShoppingCart, Filter } from "lucide-react";
+import { Plus, Edit, Trash2, ShoppingCart, Filter, Upload } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
 const EXPENSE_CATEGORIES = ["Utilities","Food","Transport","Insurance","Housing","Entertainment","Shopping","Travel","Family","Pet","Health","Investment","Medical","Other"];
@@ -132,7 +133,14 @@ export default function ExpensesPage() {
       <PageHeader
         title="Expenses"
         subtitle="Track monthly, yearly, and one-time expenses with inflation"
-        actions={<Button size="sm" onClick={openAdd}><Plus size={14} /> Add Expense</Button>}
+        actions={
+          <div className="flex gap-2">
+            <Link href="/expenses/actuals">
+              <Button variant="outline" size="sm"><Upload size={14} /> Import Statement / Actuals</Button>
+            </Link>
+            <Button size="sm" onClick={openAdd}><Plus size={14} /> Add Expense</Button>
+          </div>
+        }
       />
 
       {/* Summary */}
