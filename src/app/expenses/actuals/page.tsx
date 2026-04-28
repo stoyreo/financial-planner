@@ -59,6 +59,9 @@ export default function ActualsPage() {
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Bucket by credit-card billing month (derived from STATEMENT DATE on the
+  // PDF), so a statement that covers e.g. 23 Mar → 22 Apr is one "April"
+  // bucket regardless of which side of the month each transaction landed.
   const allMonths = useMemo(() => {
     const set = new Set(transactions.map(t => t.billingMonth));
     return Array.from(set).sort().reverse();
@@ -139,7 +142,7 @@ export default function ActualsPage() {
       );
       setSelectedMonth(json.statement.billingMonth);
       setImportMsg(
-        `Imported ${added} new transaction${added === 1 ? "" : "s"} for ${ymLabel(json.statement.billingMonth)}` +
+        `Imported ${added} new transaction${added === 1 ? "" : "s"} from ${json.statement.bank} statement dated ${json.statement.statementDate} (billing ${ymLabel(json.statement.billingMonth)})` +
         (duplicates > 0 ? ` · ${duplicates} duplicate${duplicates === 1 ? "" : "s"} skipped` : "")
       );
     } catch (e: any) {
@@ -474,6 +477,20 @@ export default function ActualsPage() {
                       }
                     }}
                     className="p-1 hover:bg-destructive/10 rounded-md"
+                    title="Clear month's transactions (re-import to refresh)"
+                  >
+                    <Trash2 size={11} className="text-destructive" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+    </div>
+  );
+}
                     title="Clear month's transactions (re-import to refresh)"
                   >
                     <Trash2 size={11} className="text-destructive" />

@@ -1,12 +1,17 @@
 /**
  * ACTUALS AGGREGATION
- * ───────────────────
+ *
  * Pure helpers that turn a list of Transactions + ExpenseItem budgets into
  * the views the /expenses/actuals page needs:
  *   - month-by-category totals
  *   - budget-vs-actual gap
  *   - month-vs-month trend
  *   - prioritized cut suggestions (heuristic; AI route refines them)
+ *
+ * Bucketing is by `t.billingMonth` (statement-anchored). billingMonth is
+ * derived from the STATEMENT DATE field on the imported PDF, so a single
+ * credit-card statement period is one bucket regardless of which calendar
+ * months its individual transactions land in.
  */
 
 import type { ExpenseItem, Transaction } from "./types";
@@ -26,15 +31,19 @@ export function ymLabel(ym: string): string {
   });
 }
 
-/** All distinct YYYY-MM months covered by the transaction set, sorted asc. */
+/** All distinct billing-month buckets present in the transaction set. */
 export function listMonths(txns: Transaction[]): string[] {
-  const set = new Set(txns.map(t => ymKey(t.postDate)));
+  const set = new Set(txns.map(t => t.billingMonth || ymKey(t.postDate)));
   return Array.from(set).sort();
 }
 
 /**
- * Aggregate transactions for ONE month into category totals (debits only).
- * Credits/refunds reduce their category but never push it negative below 0.
+ * Aggregate transactions for ONE billing month into category totals.
+ * Filtering is by `t.billingMonth` (statement-anchored), not the calendar
+ * month of the post date.
+ *
+ * Credits/refunds offset their category but the floor is 0 so a refund-only
+ * month doesn't show as a negative actual.
  */
 export function actualsByCategory(
   txns: Transaction[],
@@ -42,35 +51,31 @@ export function actualsByCategory(
 ): Record<string, number> {
   const out: Record<string, number> = {};
   for (const t of txns) {
-    if (ymKey(t.postDate) !== ym) continue;
+    const bucket = t.billingMonth || ymKey(t.postDate);
+    if (bucket !== ym) continue;
     const sign = t.isCredit ? -1 : 1;
     out[t.category] = (out[t.category] ?? 0) + sign * t.amount;
   }
-  // floor negatives so a refund-only month doesn't show as -X
   for (const k of Object.keys(out)) if (out[k] < 0) out[k] = 0;
   return out;
 }
 
-/** Total actual spend for a month across all categories. */
+/** Total actual spend for a billing month across all categories. */
 export function totalActuals(txns: Transaction[], ym: string): number {
   return Object.values(actualsByCategory(txns, ym)).reduce((s, v) => s + v, 0);
 }
 
 export interface BudgetVsActualRow {
   category: string;
-  budget: number;          // monthly equivalent of all budgeted ExpenseItems in this category
-  actual: number;          // sum of transactions in this category for the month
-  gap: number;             // actual - budget (positive = over)
-  pctUsed: number;         // actual / budget (0..>1)
+  budget: number;
+  actual: number;
+  gap: number;
+  pctUsed: number;
   status: "ok" | "warn" | "over";
-  isEssential: boolean;    // any essential item in this category
+  isEssential: boolean;
   budgetedItemIds: string[];
 }
 
-/**
- * Combine the user's ExpenseItem budgets with transaction actuals to produce
- * a per-category gap table for one month.
- */
 export function budgetVsActual(
   expenses: ExpenseItem[],
   txns: Transaction[],
@@ -117,7 +122,7 @@ export interface MonthlyTrendPoint {
   byCategory: Record<string, number>;
 }
 
-/** Build a trend array for the last N months that have data. */
+/** Trend across the last N billing months that have data. */
 export function monthlyTrend(
   txns: Transaction[],
   lookbackMonths = 12
@@ -133,17 +138,12 @@ export function monthlyTrend(
 export interface CutSuggestion {
   category: string;
   currentMonthly: number;
-  suggestedReduction: number;       // THB to cut per month
+  suggestedReduction: number;
   reason: string;
   priority: "high" | "medium" | "low";
   isEssential: boolean;
 }
 
-/**
- * Heuristic baseline: rank categories by overage, prefer discretionary cuts,
- * and propose a 25–50% trim to bring it back to budget. The /api/expenses/
- * suggest-cuts route runs this AND asks Claude to refine + add narrative.
- */
 export function heuristicCutSuggestions(
   rows: BudgetVsActualRow[],
   monthlySavingsTarget: number
@@ -151,7 +151,6 @@ export function heuristicCutSuggestions(
   const candidates = rows
     .filter(r => r.actual > 0)
     .sort((a, b) => {
-      // Discretionary over-budget categories first
       const aScore = (a.gap > 0 ? 1000 : 0) + (a.isEssential ? 0 : 500) + a.actual;
       const bScore = (b.gap > 0 ? 1000 : 0) + (b.isEssential ? 0 : 500) + b.actual;
       return bScore - aScore;
@@ -162,7 +161,7 @@ export function heuristicCutSuggestions(
   for (const r of candidates) {
     if (saved >= monthlySavingsTarget) break;
     const trim = r.isEssential
-      ? Math.min(r.actual * 0.1, Math.max(0, r.gap)) // essential: only shave overage
+      ? Math.min(r.actual * 0.1, Math.max(0, r.gap))
       : Math.min(r.actual * 0.4, monthlySavingsTarget - saved);
     if (trim < 100) continue;
     suggestions.push({
@@ -173,7 +172,7 @@ export function heuristicCutSuggestions(
       isEssential: r.isEssential,
       reason: r.gap > 0
         ? `Over budget by ${Math.round(r.gap).toLocaleString()} THB this month`
-        : `Largest discretionary line — trimming ${Math.round((trim / r.actual) * 100)}% restores headroom`,
+        : `Largest discretionary line - trimming ${Math.round((trim / r.actual) * 100)}% restores headroom`,
     });
     saved += trim;
   }
