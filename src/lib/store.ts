@@ -89,6 +89,7 @@ interface Store {
   recategorizeTransaction: (txnId: string, newCategory: string, learnRule?: boolean) => void;
   deleteTransaction: (txnId: string) => void;
   clearMonthTransactions: (billingMonth: string) => void;
+  deleteStatementImport: (statementId: string) => void;
   addMerchantRule: (pattern: string, category: string, isEssential?: boolean) => void;
   removeMerchantRule: (ruleId: string) => void;
   reapplyRules: () => void;
@@ -367,6 +368,19 @@ export const useStore = create<Store>()(
       clearMonthTransactions: (billingMonth) => set((state) => {
         state.transactions = state.transactions.filter(
           (t: Transaction) => t.billingMonth !== billingMonth
+        );
+      }),
+
+      deleteStatementImport: (statementId) => set((state) => {
+        const stmt = state.statementImports.find((s: StatementImport) => s.id === statementId);
+        if (!stmt) return;
+        // Remove the statement record itself
+        state.statementImports = state.statementImports.filter(
+          (s: StatementImport) => s.id !== statementId
+        );
+        // Remove all transactions that came from this statement import
+        state.transactions = state.transactions.filter(
+          (t: Transaction) => t.statementImportId !== statementId
         );
       }),
 

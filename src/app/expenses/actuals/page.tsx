@@ -50,7 +50,7 @@ export default function ActualsPage() {
   const {
     expenses, transactions, statementImports, merchantRules,
     importStatement, recategorizeTransaction, deleteTransaction,
-    clearMonthTransactions, reapplyRules, updateExpense, addExpense,
+    clearMonthTransactions, deleteStatementImport, reapplyRules, updateExpense, addExpense,
   } = store;
   const monthlyIncome = selectTotalMonthlyIncome(store);
 
@@ -470,14 +470,27 @@ export default function ActualsPage() {
                   {s.duplicatesSkipped > 0 && (
                     <span className="text-amber-500 tabular-nums">{s.duplicatesSkipped} dupes skipped</span>
                   )}
+                  {/* Clear transactions only — keeps record for trend history */}
                   <button
                     onClick={() => {
-                      if (confirm(`Clear all ${s.transactionCount} transactions for ${ymLabel(s.billingMonth)}? Statement record stays for trend history.`)) {
+                      if (confirm(`Clear all transactions for ${ymLabel(s.billingMonth)}? The statement record stays for trend history.`)) {
                         clearMonthTransactions(s.billingMonth);
                       }
                     }}
+                    className="p-1 hover:bg-amber-500/10 rounded-md"
+                    title="Clear transactions only — keeps statement record for trend history"
+                  >
+                    <RefreshCw size={11} className="text-amber-500" />
+                  </button>
+                  {/* Delete statement + all its transactions entirely */}
+                  <button
+                    onClick={() => {
+                      if (confirm(`Permanently delete the \${ymLabel(s.billingMonth)} \${s.bank} statement and all its transactions? This cannot be undone.`)) {
+                        deleteStatementImport(s.id);
+                      }
+                    }}
                     className="p-1 hover:bg-destructive/10 rounded-md"
-                    title="Clear month's transactions (re-import to refresh)"
+                    title="Delete statement and all its transactions permanently"
                   >
                     <Trash2 size={11} className="text-destructive" />
                   </button>
