@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { getSession, clearSession, ensureAppUserFromSupabase, synthesizeSession } from "@/lib/auth";
 import { useStore } from "@/lib/store";
@@ -7,11 +7,19 @@ import { getSupabaseBrowser } from "@/lib/supabase/client";
 
 const PUBLIC_PATHS = ["/login", "/login/"];
 
+// Module-scope flag: track which storageKey we've already hydrated from
+// the server in this browser session. We must NOT call loadUserNamespace
+// on every nav -- it fetches stale remote data and can clobber unsynced
+// in-memory state (e.g. transactions imported seconds ago that haven't
+// finished the AutoSync debounce yet).
+let __loadedStorageKey: string | null = null;
+
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [authed, setAuthed] = useState(false);
   const { loadUserNamespace } = useStore();
+  const didCheckRef = useRef(false);
 
   useEffect(() => {
     const isPublic = PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(p));
@@ -28,7 +36,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
             const appUser = await ensureAppUserFromSupabase(sbSession.user.email, sbSession.user.id);
             if (appUser) {
               synthesizeSession(appUser);
-              loadUserNamespace();
+              if (__loadedStorageKey !== appUser.storageKey) {
+                __loadedStorageKey = appUser.storageKey;
+                loadUserNamespace();
+              }
               setAuthed(true);
               return;
             }
@@ -40,8 +51,16 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       })();
       return;
     }
-    loadUserNamespace();
+    // Only hydrate from the server ONCE per session. Subsequent navigations
+    // rely on the Zustand persist middleware (localStorage) + AutoSync to
+    // keep state coherent. Re-fetching from /api/sync on every nav races
+    // with the 800ms AutoSync debounce and wipes freshly-imported data.
+    if (__loadedStorageKey !== session.storageKey) {
+      __loadedStorageKey = session.storageKey;
+      loadUserNamespace();
+    }
     setAuthed(true);
+    didCheckRef.current = true;
   }, [pathname]);
 
   if (!authed) return (

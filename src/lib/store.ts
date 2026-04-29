@@ -429,6 +429,25 @@ export const useStore = create<Store>()(
           return;
         }
 
+        // Defensive merge: when remote returns an EMPTY array for a list
+        // slice but local in-memory state already has items, KEEP local.
+        // This protects against the case where:
+        //   - User imports a statement (state.transactions = 100 items, persist
+        //     middleware saves to localStorage immediately).
+        //   - User closes the tab BEFORE the 800ms AutoSync debounce flushes
+        //     to /api/sync, so remote still has transactions: [].
+        //   - User reopens app → persist hydrates state from localStorage
+        //     (good, has 100 items) → loadUserNamespace fetches remote
+        //     (transactions: []) → naive overwrite would WIPE the 100 items.
+        // Solution: only overwrite a list slice when remote has items, OR
+        // when local is also empty.
+        const preferRemoteList = <T,>(remote: T[] | undefined, local: T[]): T[] | null => {
+          if (!Array.isArray(remote)) return null; // remote didn't include this slice → keep local
+          if (remote.length > 0) return remote;     // remote has data → take it (authoritative)
+          if (local.length === 0) return remote;    // both empty → no-op
+          return null;                              // remote empty, local has data → keep local
+        };
+
         set((state) => {
           if (data.profile) state.profile = data.profile;
           if (data.incomes) state.incomes = data.incomes;
@@ -439,9 +458,14 @@ export const useStore = create<Store>()(
           if (data.tax) state.tax = data.tax;
           if (data.scenarios) state.scenarios = data.scenarios;
           if (data.activeScenarioId) state.activeScenarioId = data.activeScenarioId;
-          if (data.transactions) state.transactions = data.transactions;
-          if (data.merchantRules) state.merchantRules = data.merchantRules;
-          if (data.statementImports) state.statementImports = data.statementImports;
+
+          const txns = preferRemoteList(data.transactions, state.transactions);
+          if (txns !== null) state.transactions = txns;
+          const rules = preferRemoteList(data.merchantRules, state.merchantRules);
+          if (rules !== null) state.merchantRules = rules;
+          const imports = preferRemoteList(data.statementImports, state.statementImports);
+          if (imports !== null) state.statementImports = imports;
+
           const f = computeForecasts(state as any);
           state.yearlyForecast = f.yearlyForecast;
           state.monthlyForecast = f.monthlyForecast;
