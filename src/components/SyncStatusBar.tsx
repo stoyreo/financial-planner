@@ -77,11 +77,20 @@ export default function SyncStatusBar() {
 
     // Truly idle — hide the bar after a short grace period
     if (localStatus === "idle" && remoteStatus === "idle") {
-      const timer = setTimeout(() => setVisible(false), 3000);
+      const timer = setTimeout(() => setVisible(false), 800);
       setPhase("idle");
       return () => clearTimeout(timer);
     }
   }, [localStatus, remoteStatus, lastError]);
+
+  // Auto-dismiss "done" state quickly so it doesn't keep blocking the
+  // bottom-right corner of the page (statement-history trash buttons live
+  // there).
+  useEffect(() => {
+    if (phase !== "done") return;
+    const t = setTimeout(() => setVisible(false), 1200);
+    return () => clearTimeout(t);
+  }, [phase]);
 
   // If there's never been any sync activity, stay hidden.
   if (!visible && !lastLocal && !lastRemote) return null;
@@ -97,7 +106,7 @@ export default function SyncStatusBar() {
     phase === "done" ? lastRemote ?? lastLocal : null;
 
   return (
-    <div className="fixed bottom-4 right-4 w-80 p-3 rounded-xl shadow-lg bg-card text-card-foreground border border-border z-[60]">
+    <div className="fixed bottom-4 right-4 w-80 p-3 rounded-xl shadow-lg bg-card text-card-foreground border border-border z-[60] pointer-events-none opacity-90">
       <div className="flex justify-between text-xs mb-1">
         <span className="font-semibold text-foreground">Web → Database Sync</span>
         <span className="text-foreground">{pct}%</span>

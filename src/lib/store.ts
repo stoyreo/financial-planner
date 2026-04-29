@@ -332,6 +332,13 @@ export const useStore = create<Store>()(
             (b.postDate || "").localeCompare(a.postDate || "")
           );
         });
+        // Belt-and-braces: flush to localStorage + server immediately, in
+        // addition to whatever AutoSync's debounce eventually does. This
+        // is what makes the import survive a fast nav-away (faster than
+        // the 800ms AutoSync debounce). Fire-and-forget — UI doesn't wait.
+        get().saveUserNamespaceAsync().catch((err) => {
+          console.error("[importStatement] immediate save failed", err);
+        });
         return { added, duplicates, statementImportId: id };
       },
 

@@ -3,18 +3,22 @@
 /**
  * AUTO-SYNC
  * ---------
- * Subscribes to the Zustand store and, whenever any of the data slices
- * changes (profile / incomes / expenses / debts / investments /
- * retirement / tax / scenarios / activeScenarioId / transactions /
- * merchantRules / statementImports), debounces for a short period and
- * then calls saveUserNamespaceAsync() so the change is persisted both
- * to localStorage AND to the server file (data/user-*.json).
- *
- * This is what makes "every field edit on the web actually reflected to the
- * database" -- without having to sprinkle save() calls on every page.
+ * Subscribes to the Zustand store and, whenever any data-bearing slice
+ * changes, debounces for a short period and then calls
+ * saveUserNamespaceAsync() so the change is persisted both to localStorage
+ * AND to the server file (data/user-*.json).
  *
  * It also drives the <SyncStatusBar />, because saveUserNamespaceAsync flips
  * localSyncStatus / remoteSyncStatus on the store as it runs.
+ *
+ * NOTE on the removed `firstRunRef`: an earlier version skipped the FIRST
+ * subscriber invocation on the assumption that it was the hydration pass.
+ * That was wrong. Zustand's persist middleware hydrates synchronously
+ * during create(), BEFORE this component mounts and subscribes -- so the
+ * subscriber never sees the hydration. Skipping the first event instead
+ * silently dropped the user's first real action (e.g. their first
+ * statement import on a fresh session). Now we let every change through
+ * and rely on `dataChanged` + `getSession()` to filter.
  */
 
 import { useEffect, useRef } from "react";
@@ -25,27 +29,11 @@ const DEBOUNCE_MS = 800;
 
 export default function AutoSync() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const firstRunRef = useRef(true);
 
   useEffect(() => {
-    // Subscribe to the fields we want to persist. Zustand calls this on
-    // EVERY store update; we hash a signature and skip no-ops.
     const unsub = useStore.subscribe((state, prev) => {
-      // Skip the initial hydration pass -- we don't want to sync the
-      // just-loaded state back to the server.
-      if (firstRunRef.current) {
-        firstRunRef.current = false;
-        return;
-      }
-
       // Only run if a data-bearing slice actually changed. Ignore
       // forecast recomputes and sync-status flips.
-      //
-      // IMPORTANT: transactions / merchantRules / statementImports MUST be
-      // included here. Otherwise an "Import Statement" on /expenses/actuals
-      // updates state but never syncs to the server, and the next
-      // loadUserNamespace() call (fired by AuthGuard) overwrites the
-      // just-imported transactions with the stale remote payload.
       const dataChanged =
         state.profile !== prev.profile ||
         state.incomes !== prev.incomes ||
