@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useStore } from "@/lib/store";
 import { cn, calcAge } from "@/lib/utils";
+import { migrateLegacyImports } from "@/lib/migration";
 import { VersionPanel } from "./VersionPanel";
 import { Logo } from "@/components/brand/Logo";
 // BackupWidget removed from sidebar on 2026-04-18 (user request). If you need
@@ -77,6 +78,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return age ? `${name} \u00B7 Age ${age}` : name;
   })();
 
+  // Migration: assign legacy transactions to Toy account (runs once)
+  useEffect(() => {
+    migrateLegacyImports();
+  }, []);
   useEffect(() => { recomputeForecast(); }, []);
   // Close drawer on nav
   useEffect(() => { setMobileDrawer(false); }, [pathname]);

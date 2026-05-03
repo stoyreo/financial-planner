@@ -252,11 +252,19 @@ function parseThaiStatement(text: string): ParsedStatement {
 
 export async function POST(req: Request) {
   try {
-    const { mediaType, data, fileName } = (await req.json()) as {
+    const { mediaType, data, fileName, activeAccountId } = (await req.json()) as {
       mediaType: string;
       data: string;
       fileName?: string;
+      activeAccountId?: string;
     };
+
+    if (!activeAccountId) {
+      return NextResponse.json(
+        { error: "activeAccountId_required", message: "activeAccountId is required" },
+        { status: 400 },
+      );
+    }
 
     if (!data) return NextResponse.json({ error: "no_data" }, { status: 400 });
     if (mediaType !== "application/pdf") {
@@ -306,6 +314,7 @@ export async function POST(req: Request) {
       const category = rule ? rule.category : "Other";
 
       const txn = {
+        accountId: activeAccountId,
         id: uuid(),
         postDate: t.postDate,
         transDate: t.transDate,

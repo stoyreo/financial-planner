@@ -38,3 +38,15 @@ export function getCurrentAccount(): Account {
 export function validateAccess(requiredRole: UserRole): boolean {
   return true; // Always admin
 }
+
+/**
+ * Get the Toy (admin) account ID.
+ * Used by migration logic to assign legacy transactions to the admin account.
+ * Returns null if Toy account not found.
+ */
+export function getToyAccountId(accounts: Account[]): string | null {
+  const toy = accounts.find(
+    a => a.email === "toy.theeranan@gmail.com" && a.role === "admin"
+  ) || accounts.find(a => a.email === "toy.theeranan@gmail.com");
+  return toy?.id ?? null;
+}

@@ -18,6 +18,7 @@ import {
   selectTotalMonthlyIncome,
 } from "@/lib/store";
 import { thb } from "@/lib/utils";
+import { getCurrentAccount } from "@/lib/accounts";
 import {
   Card, CardHeader, CardTitle, CardContent, Button, Badge,
   StatCard, PageHeader, EmptyState, Progress, Select, Input,
@@ -108,6 +109,8 @@ export default function ActualsPage() {
 
   // ── Handlers ─────────────────────────────────────────
   async function handleFile(file: File) {
+    const account = getCurrentAccount();
+    const activeAccountId = account.id;
     setUploading(true);
     setImportMsg(null);
     try {
@@ -117,6 +120,7 @@ export default function ActualsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          activeAccountId,
           mediaType: file.type || "application/pdf",
           data: b64,
           fileName: file.name,

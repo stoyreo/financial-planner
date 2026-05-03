@@ -178,3 +178,37 @@ export function heuristicCutSuggestions(
   }
   return suggestions;
 }
+
+/**
+ * Filter transactions by accountId for per-user isolation.
+ * NEW: required for multi-account support.
+ */
+export function filterTransactionsByAccount(
+  txns: Transaction[],
+  accountId: string
+): Transaction[] {
+  return txns.filter(t => t.accountId === accountId);
+}
+
+/**
+ * Build actuals for a specific account.
+ * NEW: provides account-scoped calculations.
+ */
+export function buildActuals(
+  txns: Transaction[],
+  accountId: string,
+  ym: string
+): Record<string, number> {
+  const filtered = filterTransactionsByAccount(txns, accountId);
+  return actualsByCategory(filtered, ym);
+}
+
+/**
+ * Select actuals for the active account.
+ * Selector pattern for Zustand consumption.
+ */
+export const selectActualsForAccount = (
+  txns: Transaction[],
+  accountId: string,
+  ym: string
+) => buildActuals(txns, accountId, ym);

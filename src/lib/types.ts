@@ -264,6 +264,7 @@ export interface AppState {
 
 // ── Actuals: imported transactions from credit card statements ─────
 export interface Transaction {
+  accountId: string;  // NEW — required, identifies owner account
   id: string;
   postDate: string;
   transDate: string;
@@ -296,6 +297,7 @@ export interface MerchantRule {
 }
 
 export interface StatementImport {
+  accountId: string;  // NEW
   id: string;
   fileName: string;
   importedAt: string;

@@ -766,3 +766,36 @@ export const selectNetWorth = (s: Store) => {
   const liabilities = s.debts.filter(d => d.isActive).reduce((sum, d) => sum + d.currentBalance, 0);
   return assets - liabilities;
 };
+
+// ── Account-Filtered Selectors (NEW) ──────────────────
+/**
+ * Get transactions for the active account only.
+ * Required for per-user isolation in statement imports.
+ */
+export const useTransactionsForActiveAccount = (accountId: string) => {
+  const store = useStore();
+  return store.transactions.filter(t => t.accountId === accountId);
+};
+
+/**
+ * Get statement imports for the active account only.
+ * Required for per-user isolation.
+ */
+export const useImportsForActiveAccount = (accountId: string) => {
+  const store = useStore();
+  return store.statementImports.filter(i => i.accountId === accountId);
+};
+
+/**
+ * Selector function: filter transactions by accountId.
+ * Usage: const filtered = selectTransactionsForAccount(store, accountId);
+ */
+export const selectTransactionsForAccount = (s: Store, accountId: string) =>
+  s.transactions.filter(t => t.accountId === accountId);
+
+/**
+ * Selector function: filter imports by accountId.
+ * Usage: const filtered = selectImportsForAccount(store, accountId);
+ */
+export const selectImportsForAccount = (s: Store, accountId: string) =>
+  s.statementImports.filter(i => i.accountId === accountId);
